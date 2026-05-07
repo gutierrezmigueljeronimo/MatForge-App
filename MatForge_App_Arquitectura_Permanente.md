@@ -264,6 +264,7 @@ DTYPE  = torch.float16 if DEVICE == "cuda" else torch.float32
 |---|---|
 | Versión mínima de Streamlit | 1.50 |
 | Decorador de caché de modelos | `@st.cache_resource` — nunca `@st.cache` |
+| DTYPE en CUDA | torch.float32 — el backbone PVT-v2-B1 desborda en float16 con imágenes reales. float16 solo viable para el módulo SR. |
 | SR y MatForgeNet simultáneos | No — estrictamente secuencial |
 | Tamaño de tile | 256×256, stride 128 (50% de solapamiento) |
 | Blending Hann para Normal | Acumular → dividir → renormalizar L2. Nunca renormalizar por tile antes de acumular. |
