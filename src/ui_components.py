@@ -282,6 +282,9 @@ def build_threejs_viewer(
         </script>
 
         <script type="module">
+            import * as THREE from 'three';
+            import {{ OrbitControls }} from 'three/addons/controls/OrbitControls.js';
+
             // --- Scene setup ---
             const scene = new THREE.Scene();
             scene.background = new THREE.Color('{BG_PRIMARY}');
