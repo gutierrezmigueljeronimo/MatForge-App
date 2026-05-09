@@ -65,6 +65,7 @@ def init_session_state() -> None:
         "asset_name": "material",
         "engine": "Blender",
         "viewer_geometry": "sphere",
+        "maps_raw": None,  # unmodified inference output, source of truth for R/M adjust
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -123,7 +124,7 @@ st.sidebar.divider()
 
 # ----- file uploader -------------------------------------------------------
 def _on_file_change() -> None:
-    invalidate_session_keys(["maps", "group_label", "knn_distance"])
+    invalidate_session_keys(["maps", "maps_raw", "group_label", "knn_distance"])
     st.session_state["input_image"] = None
 
 uploaded_file = st.sidebar.file_uploader(
@@ -164,6 +165,16 @@ use_sr = st.sidebar.checkbox(
 )
 if use_sr:
     st.sidebar.warning("SR adds ~8–10 s processing time.")
+    if st.session_state["input_image"] is not None:
+        _sr_w = int(st.session_state["input_image"].width * st.session_state["zoom"]) * 4
+        _sr_h = int(st.session_state["input_image"].height * st.session_state["zoom"]) * 4
+        if _sr_w > 1024 or _sr_h > 1024:
+            st.sidebar.error(
+                f"SR will produce a {_sr_w}×{_sr_h} px image. "
+                f"MatForge was trained on 1K patches — results above 1024 px "
+                f"are likely to be flat or incoherent. "
+                f"Reduce zoom before enabling SR."
+            )
 
 # ----- time estimate -------------------------------------------------------
 if st.session_state["input_image"] is not None:
@@ -183,7 +194,58 @@ generate = st.sidebar.button(
     use_container_width=True,
 )
 
-# ----- export section (only when maps are ready) ----------------------------
+# ===========================================================================
+# GENERATE pipeline
+# ===========================================================================
+if generate:
+    if st.session_state["input_image"] is None:
+        st.error("Please upload an image first.")
+    else:
+        try:
+            with st.status("Generating PBR maps…", expanded=True) as status_box:
+                # 1. Load & zoom
+                status_box.write("Loading image…")
+                img = st.session_state["input_image"]
+                # Prevent zoom from reducing the image below one tile dimension.
+                _min_zoom = max(0.1, 256 / min(img.width, img.height))
+                if st.session_state["zoom"] < _min_zoom:
+                    st.warning(
+                        f"Zoom {st.session_state['zoom']:.2f} is too low for this image size "
+                        f"({img.width}×{img.height} px). "
+                        f"Minimum safe zoom is {_min_zoom:.2f}. Clamping automatically."
+                    )
+                img = apply_zoom(img, max(st.session_state["zoom"], _min_zoom))
+
+                # 2. Optional SR
+                if st.session_state["use_sr"]:
+                    status_box.write("Running Super-Resolution…")
+                    img = run_sr(img)
+                    release_sr_model()
+                    gc.collect()
+                    torch.cuda.empty_cache()
+
+                # 3. Material classification
+                status_box.write("Classifying material…")
+                label, distance = classify_material(img)
+                st.session_state["group_label"] = label
+                st.session_state["knn_distance"] = distance
+
+                # 4. MatForge inference
+                status_box.write("Predicting PBR maps…")
+                maps = run_inference(img)
+                st.session_state["maps"] = maps
+                st.session_state["maps_raw"] = {
+                    "normal": maps["normal"].copy(),
+                    "roughness": maps["roughness"].copy(),
+                    "metallic": maps["metallic"].copy(),
+                }
+
+                status_box.update(label="Done.", state="complete", expanded=False)
+
+        except Exception as exc:
+            st.error(str(exc))
+
+# Export and Tools rendered after pipeline so session state is current.
 if st.session_state["maps"] is not None:
     st.sidebar.divider()
     st.sidebar.markdown("### Export")
@@ -219,26 +281,25 @@ if st.session_state["maps"] is not None:
         use_container_width=True,
     )
 
-# ----- tools section (only when maps are ready) ----------------------------
-if st.session_state["maps"] is not None:
     st.sidebar.divider()
     st.sidebar.markdown("### Tools")
 
-    # -- Adjust R/M ----------------------------------------------------------
     with st.sidebar.expander("Adjust R/M"):
         r_gain = st.slider("Roughness gain", 0.5, 2.0, 1.0, 0.05, key="r_gain")
-        r_offset = st.slider("Roughness offset", -0.5, 0.5, 0.0, 0.05, key="r_offset")
+        r_offset = st.slider("Roughness offset", -0.5, 0.5, 0.0, 0.05,
+                             key="r_offset")
         m_gain = st.slider("Metallic gain", 0.5, 2.0, 1.0, 0.05, key="m_gain")
-        m_offset = st.slider("Metallic offset", -0.5, 0.5, 0.0, 0.05, key="m_offset")
+        m_offset = st.slider("Metallic offset", -0.5, 0.5, 0.0, 0.05,
+                             key="m_offset")
         if st.button("Apply R/M adjustments", key="apply_rm"):
+            raw = st.session_state["maps_raw"]
             st.session_state["maps"]["roughness"] = adjust_gain_offset(
-                st.session_state["maps"]["roughness"], r_gain, r_offset
+                raw["roughness"], r_gain, r_offset
             )
             st.session_state["maps"]["metallic"] = adjust_gain_offset(
-                st.session_state["maps"]["metallic"], m_gain, m_offset
+                raw["metallic"], m_gain, m_offset
             )
 
-    # -- Normal Map Quality --------------------------------------------------
     with st.sidebar.expander("Normal Map Quality"):
         if st.button("Evaluate quality", key="eval_quality"):
             result = evaluate_normal_quality(st.session_state["maps"]["normal"])
@@ -249,52 +310,13 @@ if st.session_state["maps"] is not None:
             st.image(result["heatmap"], caption="Diagnostic heatmap",
                      use_container_width=True)
 
-    # -- Material Group ------------------------------------------------------
     with st.sidebar.expander("Material Group"):
         if st.session_state["group_label"] is not None:
             st.metric("Group", st.session_state["group_label"])
-            st.caption(f"KNN distance: {st.session_state['knn_distance']:.3f}")
+            st.caption(
+                f"KNN distance: {st.session_state['knn_distance']:.3f}")
         else:
             st.caption("Run Generate Maps first.")
-
-
-# ===========================================================================
-# GENERATE pipeline
-# ===========================================================================
-if generate:
-    if st.session_state["input_image"] is None:
-        st.error("Please upload an image first.")
-    else:
-        try:
-            with st.status("Generating PBR maps…", expanded=True) as status_box:
-                # 1. Load & zoom
-                status_box.write("Loading image…")
-                img = st.session_state["input_image"]
-                img = apply_zoom(img, st.session_state["zoom"])
-
-                # 2. Optional SR
-                if st.session_state["use_sr"]:
-                    status_box.write("Running Super-Resolution…")
-                    img = run_sr(img)
-                    release_sr_model()
-                    gc.collect()
-                    torch.cuda.empty_cache()
-
-                # 3. Material classification
-                status_box.write("Classifying material…")
-                label, distance = classify_material(img)
-                st.session_state["group_label"] = label
-                st.session_state["knn_distance"] = distance
-
-                # 4. MatForge inference
-                status_box.write("Predicting PBR maps…")
-                maps = run_inference(img)
-                st.session_state["maps"] = maps
-
-                status_box.update(label="Done.", state="complete", expanded=False)
-
-        except Exception as exc:
-            st.error(str(exc))
 
 # ===========================================================================
 # Main area
