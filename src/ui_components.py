@@ -296,6 +296,7 @@ def build_threejs_viewer(
     geometry: str = "sphere",
     height: int = 600,
     color_b64: str | None = None,
+    show_env: bool = False,
 ) -> str:
     """Create an interactive 3D material preview using Three.js.
 
@@ -337,6 +338,16 @@ def build_threejs_viewer(
     else:
         albedo_js = "materialParams.color = new THREE.Color(0.6, 0.6, 0.6);"
 
+    if show_env:
+        env_js = (
+            "const pmremGenerator = new THREE.PMREMGenerator(renderer);"
+            " scene.environment = pmremGenerator.fromScene("
+            " new RoomEnvironment(), 0.04).texture;"
+            " pmremGenerator.dispose();"
+        )
+    else:
+        env_js = ""
+
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -360,6 +371,7 @@ def build_threejs_viewer(
         <script type="module">
             import * as THREE from 'three';
             import {{ OrbitControls }} from 'three/addons/controls/OrbitControls.js';
+            import {{ RoomEnvironment }} from 'three/addons/environments/RoomEnvironment.js';
 
             // Use container width rather than window.innerWidth to avoid
             // distortion caused by the Streamlit sidebar narrowing the iframe.
@@ -389,23 +401,30 @@ def build_threejs_viewer(
             light2.position.set(-4, -2, -3);
             scene.add(light2);
 
+            {env_js}
+
             // Helper: load a base64 PNG texture with repeat wrapping for
             // tiling materials. colorSpace=null keeps linear space for
             // non-colour data (normal, roughness, metallic).
-            function loadTex(b64, colorSpace) {{
+            function loadTex(b64, isColorData) {{
                 const t = new THREE.TextureLoader().load(
                     'data:image/png;base64,' + b64
                 );
                 t.wrapS = THREE.RepeatWrapping;
                 t.wrapT = THREE.RepeatWrapping;
                 t.repeat.set(2, 2);
-                if (colorSpace) t.colorSpace = colorSpace;
+                // Non-colour data (normal, roughness, metallic) must use
+                // linear space — SRGBColorSpace applies gamma that distorts
+                // the values and produces incorrect PBR rendering.
+                t.colorSpace = isColorData
+                    ? THREE.SRGBColorSpace
+                    : THREE.NoColorSpace;
                 return t;
             }}
 
-            const normalTex    = loadTex('{normal_b64}', null);
-            const roughnessTex = loadTex('{roughness_b64}', null);
-            const metallicTex  = loadTex('{metallic_b64}', null);
+            const normalTex    = loadTex('{normal_b64}', false);
+            const roughnessTex = loadTex('{roughness_b64}', false);
+            const metallicTex  = loadTex('{metallic_b64}', false);
 
             // Neutral grey albedo makes normal/roughness/metallic detail
             // visible without an envMap. Pure white washes out normal detail.

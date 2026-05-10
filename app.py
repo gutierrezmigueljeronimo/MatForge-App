@@ -21,7 +21,7 @@ from PIL import Image
 from src.classifier import classify_material
 from src.export import export_maps
 from src.inference import run_inference
-from src.postprocess import adjust_gain_offset, make_tileable_frequency
+from src.postprocess import adjust_gain_offset, calibrate_by_group, make_tileable_frequency
 from src.quality import evaluate_normal_quality
 from src.sr import release_sr_model, run_sr
 from src.ui_components import (
@@ -247,6 +247,114 @@ if generate:
 # Export and Tools rendered after pipeline so session state is current.
 if st.session_state["maps"] is not None:
     st.sidebar.divider()
+    st.sidebar.markdown("### Tools")
+
+    with st.sidebar.expander("Adjust R/M"):
+        r_gain = st.slider("Roughness gain", 0.5, 2.0, 1.0, 0.05, key="r_gain")
+        r_offset = st.slider("Roughness offset", -0.5, 0.5, 0.0, 0.05,
+                             key="r_offset")
+        m_gain = st.slider("Metallic gain", 0.5, 2.0, 1.0, 0.05, key="m_gain")
+        m_offset = st.slider("Metallic offset", -0.5, 0.5, 0.0, 0.05,
+                             key="m_offset")
+        if st.button("Apply R/M adjustments", key="apply_rm"):
+            raw = st.session_state["maps_raw"]
+            st.session_state["maps"]["roughness"] = adjust_gain_offset(
+                raw["roughness"], r_gain, r_offset
+            )
+            st.session_state["maps"]["metallic"] = adjust_gain_offset(
+                raw["metallic"], m_gain, m_offset
+            )
+
+    with st.sidebar.expander("Normal Map Quality"):
+        if st.button("Evaluate quality", key="eval_quality"):
+            result = evaluate_normal_quality(st.session_state["maps"]["normal"])
+            st.metric("Overall score", f"{result['overall_score']:.2f}")
+            if result["warnings"]:
+                for w in result["warnings"]:
+                    st.warning(w)
+            st.image(result["heatmap"], caption="Diagnostic heatmap",
+                     use_container_width=True)
+
+    with st.sidebar.expander("Calibrate by Group"):
+        if st.session_state["group_label"] is not None:
+            st.caption(
+                f"Detected: **{st.session_state['group_label']}** "
+                f"(KNN distance: {st.session_state['knn_distance']:.3f})"
+            )
+            _groups = [
+                "stone_rough", "concrete_plaster", "brick_terracotta",
+                "mixed_ambiguous", "wood", "ceramic_ground",
+                "marble_smooth", "metal",
+            ]
+            selected_group = st.selectbox(
+                "Material group override",
+                options=_groups,
+                index=_groups.index(st.session_state["group_label"])
+                      if st.session_state["group_label"] in _groups else 0,
+                key="calibration_group_override",
+                help="Override the detected group if the classifier is wrong.",
+            )
+            # Recalculate alpha — if overridden, use full confidence.
+            knn_dist = st.session_state["knn_distance"]
+            if selected_group != st.session_state["group_label"]:
+                alpha = 1.0
+                st.caption("Manual override — calibration confidence: 1.00")
+            else:
+                alpha = max(0.0, min(1.0, 1.0 - knn_dist * 3.0))
+                st.caption(f"Calibration confidence: {alpha:.2f}")
+            if alpha < 0.3:
+                st.warning(
+                    "Low confidence — calibration will have minimal effect. "
+                    "Consider adjusting manually via Adjust R/M."
+                )
+            if st.button("Apply Calibration", key="apply_calibration"):
+                r_cal, m_cal = calibrate_by_group(
+                    roughness=st.session_state["maps_raw"]["roughness"],
+                    metallic=st.session_state["maps_raw"]["metallic"],
+                    group=selected_group,
+                    knn_distance=0.0 if selected_group !=
+                                 st.session_state["group_label"] else knn_dist,
+                )
+                st.session_state["maps"]["roughness"] = r_cal
+                st.session_state["maps"]["metallic"]  = m_cal
+                st.success(f"Calibration applied for group: {selected_group}.")
+        else:
+            st.caption("Run Generate Maps first.")
+
+    with st.sidebar.expander("Make Tileable"):
+        st.caption(
+            "Removes low-frequency gradients from Roughness and Metallic "
+            "that break tileability after tile-and-merge inference. "
+            "Enable SR Seam Blend if the image was processed with SR."
+        )
+        st.caption(
+            "Caution: Does not correct large-scale pattern repetition or "
+            "directional lighting baked into the source photo."
+        )
+        sr_seam = st.checkbox(
+            "SR seam blend (use if SR was active)",
+            value=st.session_state.get("use_sr", False),
+            key="tile_sr_seam",
+        )
+        sigma = st.slider(
+            "Low-freq sigma", 32.0, 128.0, 64.0, 8.0,
+            key="tile_sigma",
+            help="Higher values remove broader gradients.",
+        )
+        if st.button("Apply Tileable", key="apply_tileable"):
+            result = make_tileable_frequency(
+                normal=st.session_state["maps"]["normal"],
+                roughness=st.session_state["maps"]["roughness"],
+                metallic=st.session_state["maps"]["metallic"],
+                sr_active=sr_seam,
+                sigma=sigma,
+            )
+            st.session_state["maps"]["normal"]    = result["normal"]
+            st.session_state["maps"]["roughness"] = result["roughness"]
+            st.session_state["maps"]["metallic"]  = result["metallic"]
+            st.success("Tileable maps applied.")
+
+    st.sidebar.divider()
     st.sidebar.markdown("### Export")
 
     asset_name = st.sidebar.text_input("Asset name", key="asset_name")
@@ -279,76 +387,6 @@ if st.session_state["maps"] is not None:
         mime="application/zip",
         use_container_width=True,
     )
-
-    st.sidebar.divider()
-    st.sidebar.markdown("### Tools")
-
-    with st.sidebar.expander("Adjust R/M"):
-        r_gain = st.slider("Roughness gain", 0.5, 2.0, 1.0, 0.05, key="r_gain")
-        r_offset = st.slider("Roughness offset", -0.5, 0.5, 0.0, 0.05,
-                             key="r_offset")
-        m_gain = st.slider("Metallic gain", 0.5, 2.0, 1.0, 0.05, key="m_gain")
-        m_offset = st.slider("Metallic offset", -0.5, 0.5, 0.0, 0.05,
-                             key="m_offset")
-        if st.button("Apply R/M adjustments", key="apply_rm"):
-            raw = st.session_state["maps_raw"]
-            st.session_state["maps"]["roughness"] = adjust_gain_offset(
-                raw["roughness"], r_gain, r_offset
-            )
-            st.session_state["maps"]["metallic"] = adjust_gain_offset(
-                raw["metallic"], m_gain, m_offset
-            )
-
-    with st.sidebar.expander("Normal Map Quality"):
-        if st.button("Evaluate quality", key="eval_quality"):
-            result = evaluate_normal_quality(st.session_state["maps"]["normal"])
-            st.metric("Overall score", f"{result['overall_score']:.2f}")
-            if result["warnings"]:
-                for w in result["warnings"]:
-                    st.warning(w)
-            st.image(result["heatmap"], caption="Diagnostic heatmap",
-                     use_container_width=True)
-
-    with st.sidebar.expander("Material Group"):
-        if st.session_state["group_label"] is not None:
-            st.metric("Group", st.session_state["group_label"])
-            st.caption(
-                f"KNN distance: {st.session_state['knn_distance']:.3f}")
-        else:
-            st.caption("Run Generate Maps first.")
-
-    with st.sidebar.expander("Make Tileable"):
-        st.caption(
-            "Removes low-frequency gradients from Roughness and Metallic "
-            "that break tileability after tile-and-merge inference. "
-            "Enable SR Seam Blend if the image was processed with SR."
-        )
-        st.caption(
-            "⚠️ Does not correct large-scale pattern repetition or "
-            "directional lighting baked into the source photo."
-        )
-        sr_seam = st.checkbox(
-            "SR seam blend (use if SR was active)",
-            value=st.session_state.get("use_sr", False),
-            key="tile_sr_seam",
-        )
-        sigma = st.slider(
-            "Low-freq sigma", 32.0, 128.0, 64.0, 8.0,
-            key="tile_sigma",
-            help="Higher values remove broader gradients.",
-        )
-        if st.button("Apply Tileable", key="apply_tileable"):
-            result = make_tileable_frequency(
-                normal=st.session_state["maps_raw"]["normal"],
-                roughness=st.session_state["maps_raw"]["roughness"],
-                metallic=st.session_state["maps_raw"]["metallic"],
-                sr_active=sr_seam,
-                sigma=sigma,
-            )
-            st.session_state["maps"]["normal"]    = result["normal"]
-            st.session_state["maps"]["roughness"] = result["roughness"]
-            st.session_state["maps"]["metallic"]  = result["metallic"]
-            st.success("Tileable maps applied.")
 
 # ===========================================================================
 # Main area
@@ -423,6 +461,14 @@ else:
                 help="Uses the original image as albedo. "
                      "Disables neutral grey base color.",
             )
+            show_env = st.checkbox(
+                "Room environment",
+                value=False,
+                key="viewer_show_env",
+                help="Adds a room environment map for correct metallic "
+                     "rendering. Recommended for metals — may look too "
+                     "bright on non-metallic materials.",
+            )
 
         def _cap_texture(arr: np.ndarray) -> np.ndarray:
             if arr.shape[0] > 1024 or arr.shape[1] > 1024:
@@ -458,14 +504,7 @@ else:
             geometry=st.session_state["viewer_geometry"],
             height=620,
             color_b64=color_b64,
-        )
-        viewer_html = build_threejs_viewer(
-            normal_b64=n_b64,
-            roughness_b64=r_b64,
-            metallic_b64=m_b64,
-            geometry=st.session_state["viewer_geometry"],
-            height=620,
-            color_b64=color_b64,
+            show_env=show_env,
         )
         components.html(viewer_html, height=620)
 
