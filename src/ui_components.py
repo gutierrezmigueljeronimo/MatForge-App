@@ -103,17 +103,6 @@ def inject_css() -> None:
         color: {TEXT_SECONDARY};
     }}
 
-    /* Hide Streamlit top bar deploy button and match header to app background */
-    [data-testid="stToolbar"] {{
-        display: none;
-    }}
-    [data-testid="stHeader"] {{
-        background-color: {BG_PRIMARY};
-    }}
-    #MainMenu {{
-        display: none;
-    }}
-
     /* Cards – rendered via render_result_card, no extra CSS needed */
     </style>
     """
@@ -481,24 +470,60 @@ def render_comparison_slider(
         height: Height of the comparison widget in pixels.
     """
     html = f"""
-    <div style="position:relative; width:100%; height:{height}px;
-                background:{BG_PRIMARY}; overflow:hidden;">
-        <img src="data:image/png;base64,{before_b64}"
-             style="position:absolute; top:0; left:0; width:100%; height:100%;
-                    object-fit:contain;">
+    <div id="comp-wrap" style="position:relative; width:100%;
+                height:{height}px; background:{BG_PRIMARY};
+                overflow:hidden; cursor:ew-resize;">
         <img id="after-img" src="data:image/png;base64,{after_b64}"
-             style="position:absolute; top:0; left:0; width:100%; height:100%;
-                    object-fit:contain; clip-path: inset(0 50% 0 0);">
+             style="position:absolute; top:0; left:0; width:100%;
+                    height:100%; object-fit:contain;">
+        <img id="before-img" src="data:image/png;base64,{before_b64}"
+             style="position:absolute; top:0; left:0; width:100%;
+                    height:100%; object-fit:contain;
+                    clip-path: inset(0 50% 0 0);">
+
+        <!-- Divider line -->
+        <div id="divider" style="position:absolute; top:0; left:50%;
+                    width:2px; height:100%;
+                    background:rgba(255,255,255,0.8);
+                    transform:translateX(-50%);
+                    pointer-events:none;">
+            <!-- Handle -->
+            <div style="position:absolute; top:50%; left:50%;
+                        transform:translate(-50%,-50%);
+                        width:32px; height:32px; border-radius:50%;
+                        background:rgba(255,255,255,0.9);
+                        display:flex; align-items:center;
+                        justify-content:center;
+                        font-size:14px; color:#1C1B18;
+                        box-shadow:0 2px 8px rgba(0,0,0,0.4);">
+                ↔
+            </div>
+        </div>
+
+        <!-- Labels -->
+        <div id="label-before" style="position:absolute; top:8px; left:8px;
+                    background:rgba(0,0,0,0.55); color:#E8E6DF;
+                    font-size:11px; padding:3px 8px; border-radius:4px;
+                    pointer-events:none;">Before</div>
+        <div id="label-after" style="position:absolute; top:8px; right:8px;
+                    background:rgba(0,0,0,0.55); color:#E8E6DF;
+                    font-size:11px; padding:3px 8px; border-radius:4px;
+                    pointer-events:none;">After</div>
+
+        <!-- Invisible range input for interaction -->
         <input type="range" id="slider" min="0" max="100" value="50"
-               style="position:absolute; top:0; left:0; width:100%; height:100%;
-                      opacity:0; cursor:ew-resize;">
+               style="position:absolute; top:0; left:0; width:100%;
+                      height:100%; opacity:0; cursor:ew-resize; margin:0;">
     </div>
     <script>
-        const slider = document.getElementById('slider');
-        const after = document.getElementById('after-img');
+        const slider   = document.getElementById('slider');
+        const before   = document.getElementById('before-img');
+        const divider  = document.getElementById('divider');
+
         slider.addEventListener('input', (e) => {{
             const v = e.target.value;
-            after.style.clipPath = `inset(0 ${{100 - v}}% 0 0)`;
+            before.style.clipPath  = `inset(0 ${{100 - v}}% 0 0)`;
+            divider.style.left     = v + '%';
         }});
     </script>
     """

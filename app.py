@@ -67,7 +67,10 @@ def init_session_state() -> None:
         "asset_name": "material",
         "engine": "Blender",
         "viewer_geometry": "sphere",
-        "maps_raw": None,  # unmodified inference output, source of truth for R/M adjust
+        "maps_raw": None,         # unmodified inference output, source of truth for R/M adjust
+        "maps_calibrated": None,  # state after calibrate_by_group
+        "maps_tileable": None,    # state after make_tileable_frequency
+        "export_state": "Raw",    # default export state
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -124,7 +127,10 @@ st.sidebar.divider()
 
 # ----- file uploader -------------------------------------------------------
 def _on_file_change() -> None:
-    invalidate_session_keys(["maps", "maps_raw", "group_label", "knn_distance"])
+    invalidate_session_keys([
+        "maps", "maps_raw", "maps_calibrated", "maps_tileable",
+        "group_label", "knn_distance"
+    ])
     st.session_state["input_image"] = None
 
 uploaded_file = st.sidebar.file_uploader(
@@ -335,6 +341,11 @@ if st.session_state["maps"] is not None:
                 )
                 st.session_state["maps"]["roughness"] = r_cal
                 st.session_state["maps"]["metallic"]  = m_cal
+                st.session_state["maps_calibrated"] = {
+                    "normal":    st.session_state["maps"]["normal"].copy(),
+                    "roughness": st.session_state["maps"]["roughness"].copy(),
+                    "metallic":  st.session_state["maps"]["metallic"].copy(),
+                }
                 st.success(f"Calibration applied for group: {selected_group}.")
         else:
             st.caption("Run Generate Maps first.")
@@ -370,6 +381,11 @@ if st.session_state["maps"] is not None:
             st.session_state["maps"]["normal"]    = result["normal"]
             st.session_state["maps"]["roughness"] = result["roughness"]
             st.session_state["maps"]["metallic"]  = result["metallic"]
+            st.session_state["maps_tileable"] = {
+                "normal":    st.session_state["maps"]["normal"].copy(),
+                "roughness": st.session_state["maps"]["roughness"].copy(),
+                "metallic":  st.session_state["maps"]["metallic"].copy(),
+            }
             st.success("Tileable maps applied.")
 
     st.sidebar.divider()
@@ -391,10 +407,25 @@ if st.session_state["maps"] is not None:
         "Godot 4": "godot",
     }
 
+    # Build available export states dynamically
+    _export_states = {"Raw": "maps_raw"}
+    if st.session_state["maps_calibrated"] is not None:
+        _export_states["Calibrated"] = "maps_calibrated"
+    if st.session_state["maps_tileable"] is not None:
+        _export_states["Tileable"] = "maps_tileable"
+
+    export_state_label = st.sidebar.selectbox(
+        "Export state",
+        options=list(_export_states.keys()),
+        key="export_state",
+        help="Choose which version of the maps to export.",
+    )
+    _export_source = st.session_state[_export_states[export_state_label]]
+
     zip_bytes = export_maps(
-        normal=st.session_state["maps"]["normal"],
-        roughness=st.session_state["maps"]["roughness"],
-        metallic=st.session_state["maps"]["metallic"],
+        normal=_export_source["normal"],
+        roughness=_export_source["roughness"],
+        metallic=_export_source["metallic"],
         asset_name=asset_name,
         engines=[_ENGINE_KEY[engine]],
     )
@@ -528,14 +559,60 @@ else:
 
     # 4. Comparison expander
     with st.expander("Comparison", expanded=False):
-        if st.session_state["input_image"] is not None:
-            input_b64 = image_to_base64(
-                np.array(st.session_state["input_image"]).astype(np.float32) / 255.0
-            )
-            normal_b64_disp = image_to_base64(normal_disp_capped)
-            render_comparison_slider(input_b64, normal_b64_disp, height=400)
+        if st.session_state["maps_raw"] is None:
+            st.caption("Generate maps first to use the comparison tool.")
         else:
-            st.caption("No reference image available for comparison.")
+            # Build available states for comparison
+            comp_states = {"Raw": "maps_raw"}
+            if st.session_state["maps_calibrated"] is not None:
+                comp_states["Calibrated"] = "maps_calibrated"
+            if st.session_state["maps_tileable"] is not None:
+                comp_states["Tileable"] = "maps_tileable"
+
+            selected_map = st.selectbox(
+                "Map",
+                options=["Normal", "Roughness", "Metallic"],
+                key="comparison_map",
+            )
+
+            col_before, col_after = st.columns(2)
+            with col_before:
+                before_state = st.selectbox(
+                    "Before",
+                    options=list(comp_states.keys()),
+                    key="before_state",
+                )
+            with col_after:
+                after_state = st.selectbox(
+                    "After",
+                    options=list(comp_states.keys()),
+                    key="after_state",
+                )
+
+            def _get_map_arr(state_key: str, map_name: str) -> np.ndarray:
+                source = st.session_state[state_key]
+                if map_name == "Normal":
+                    # Convert to display space [0,1] for visual comparison
+                    return normal_map_to_display(source["normal"])
+                elif map_name == "Roughness":
+                    return source["roughness"].squeeze()
+                else:
+                    return source["metallic"].squeeze()
+
+            before_arr = _get_map_arr(comp_states[before_state], selected_map)
+            after_arr = _get_map_arr(comp_states[after_state], selected_map)
+
+            before_b64 = image_to_base64(before_arr)
+            after_b64 = image_to_base64(after_arr)
+
+            # Labels above the slider
+            lbl_col1, lbl_col2 = st.columns(2)
+            with lbl_col1:
+                st.caption(f"Before: {before_state}")
+            with lbl_col2:
+                st.caption(f"After: {after_state}")
+
+            render_comparison_slider(before_b64, after_b64, height=400)
 
     # 5. 2x2 Tiling Preview
     with st.expander("Tiling Preview", expanded=False):
