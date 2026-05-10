@@ -219,10 +219,7 @@ def make_tileable_simple(
 
     # Shift by half the image size to move seams to the centre.
     shift_y, shift_x = h // 2, w // 2
-    if image.ndim == 2:
-        rolled = np.roll(image, (shift_y, shift_x), axis=(0, 1))
-    else:
-        rolled = np.roll(image, (shift_y, shift_x, 0), axis=(0, 1))
+    rolled = np.roll(image, (shift_y, shift_x), axis=(0, 1))
 
     # Horizontal and vertical ramp masks over the central 20% of the image.
     # Values from 0 to 1 from 10% left of centre to 10% right of centre.
@@ -455,3 +452,148 @@ def blend_materials(
         m_out.astype(m_a.dtype),
         n_out.astype(n_a.dtype),
     )
+
+
+# ===================================================================
+# New functions for frequency-based tileability improvement
+# ===================================================================
+
+def _normalize_low_frequency(
+    arr: np.ndarray,
+    sigma: float = 64.0,
+) -> np.ndarray:
+    """Remove low-frequency bias from a scalar PBR map to improve tileability.
+
+    The model predicts roughness and metallic values tile-by-tile, which can
+    introduce slow spatial gradients that break seamless repetition even when
+    the source image is tileable. Subtracting the low-frequency component and
+    re-centring around the global mean removes these gradients while preserving
+    high-frequency detail.
+
+    Args:
+        arr: Input array (H, W) or (H, W, 1) float32 in [0, 1].
+        sigma: Standard deviation of the Gaussian used to estimate the
+               low-frequency component. Larger values remove broader gradients.
+               Default 64.0 corresponds to roughly 1/16 of a 1K texture.
+
+    Returns:
+        Array with the same shape and dtype, clipped to [0, 1].
+    """
+    from scipy.ndimage import gaussian_filter
+    squeezed = arr.squeeze()
+    low_freq = gaussian_filter(squeezed.astype(np.float64), sigma=sigma)
+    global_mean = float(squeezed.mean())
+    result = squeezed.astype(np.float64) - low_freq + global_mean
+    result = np.clip(result, 0.0, 1.0).astype(arr.dtype)
+    if arr.ndim == 3:
+        result = result[..., np.newaxis]
+    return result
+
+
+def _blend_border_seam(
+    arr: np.ndarray,
+    border_px: int = 8,
+) -> np.ndarray:
+    """Blend opposite edges to remove the seam introduced by SR upscaling.
+
+    After 4x SR, the tile boundaries at image edges can produce a faint
+    discontinuity. This function averages opposite border strips weighted
+    by a linear ramp so that the top edge matches the bottom and the left
+    matches the right.
+
+    Args:
+        arr: Input array (H, W, C) float32, any value range.
+        border_px: Width of the blending strip in pixels. Should be small
+                   relative to image size (8–16px for 1K images).
+
+    Returns:
+        Array with the same shape and dtype.
+    """
+    out = arr.copy()
+    h, w = arr.shape[:2]
+
+    # Linear ramp: 1.0 at the edge, 0.0 at border_px distance inward.
+    ramp = np.linspace(1.0, 0.0, border_px, dtype=np.float32)
+    if arr.ndim == 3:
+        ramp = ramp[:, np.newaxis, np.newaxis]  # broadcast over W and C
+
+    # Top / bottom blend
+    top    = arr[:border_px]
+    bottom = arr[h - border_px:]
+    blended_top    = top    * (1 - ramp) + bottom[::-1] * ramp
+    blended_bottom = bottom * (1 - ramp) + top[::-1]   * ramp
+    out[:border_px]      = blended_top
+    out[h - border_px:]  = blended_bottom
+
+    # Left / right blend (operate on the already top/bottom-blended output)
+    if arr.ndim == 3:
+        ramp = np.linspace(1.0, 0.0, border_px,
+                           dtype=np.float32)[np.newaxis, :, np.newaxis]
+    else:
+        ramp = np.linspace(1.0, 0.0, border_px,
+                           dtype=np.float32)[np.newaxis, :]
+    left  = out[:, :border_px]
+    right = out[:, w - border_px:]
+    blended_left  = left  * (1 - ramp) + right[:, ::-1] * ramp
+    blended_right = right * (1 - ramp) + left[:, ::-1]  * ramp
+    out[:, :border_px]     = blended_left
+    out[:, w - border_px:] = blended_right
+
+    return out.astype(arr.dtype)
+
+
+def make_tileable_frequency(
+    normal: np.ndarray,
+    roughness: np.ndarray,
+    metallic: np.ndarray,
+    sr_active: bool = False,
+    sigma: float = 64.0,
+    border_px: int = 8,
+) -> dict:
+    """Improve tileability of predicted PBR maps using frequency normalisation.
+
+    Applies low-frequency bias removal to roughness and metallic maps, which
+    corrects the slow spatial gradients introduced by tile-and-merge inference.
+    Optionally applies border seam blending to all three maps when SR upscaling
+    has been used, which can introduce faint edge discontinuities.
+
+    This approach preserves high-frequency detail and PBR calibration.
+    It does not guarantee perfect tileability for images with large-scale
+    patterns or strong directional lighting baked into the source photo.
+
+    Args:
+        normal:    (H, W, 3) float32 in [-1, 1], OpenGL normal map.
+        roughness: (H, W, 1) float32 in [0, 1].
+        metallic:  (H, W, 1) float32 in [0, 1].
+        sr_active: If True, applies border seam blending to all maps.
+                   Set to True when the image was processed with SR upscaling.
+        sigma:     Gaussian sigma for low-frequency removal. Default 64.0.
+        border_px: Border strip width for seam blending when sr_active=True.
+
+    Returns:
+        Dict with keys "normal", "roughness", "metallic" — same shapes
+        and dtypes as inputs.
+    """
+    out_roughness = _normalize_low_frequency(roughness, sigma=sigma)
+    out_metallic  = _normalize_low_frequency(metallic,  sigma=sigma)
+    out_normal    = normal.copy()
+
+    if sr_active:
+        # Border seam blending for normal map: operate in packed [0,1] space
+        # to keep vectorial operations stable, then unpack back.
+        normal_packed = (normal + 1.0) * 0.5
+        normal_packed = _blend_border_seam(normal_packed, border_px=border_px)
+        # Renormalise after blending to restore unit-length vectors.
+        normal_unpacked = normal_packed * 2.0 - 1.0
+        norms = np.linalg.norm(normal_unpacked, axis=-1, keepdims=True)
+        norms = np.maximum(norms, 1e-8)
+        out_normal = (normal_unpacked / norms)
+
+        out_roughness = _blend_border_seam(out_roughness, border_px=border_px)
+        out_metallic  = _blend_border_seam(out_metallic,  border_px=border_px)
+
+    return {
+        "normal":    out_normal,
+        "roughness": out_roughness,
+        "metallic":  out_metallic,
+    }

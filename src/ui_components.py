@@ -103,6 +103,17 @@ def inject_css() -> None:
         color: {TEXT_SECONDARY};
     }}
 
+    /* Hide Streamlit top bar deploy button and match header to app background */
+    [data-testid="stToolbar"] {{
+        display: none;
+    }}
+    [data-testid="stHeader"] {{
+        background-color: {BG_PRIMARY};
+    }}
+    #MainMenu {{
+        display: none;
+    }}
+
     /* Cards – rendered via render_result_card, no extra CSS needed */
     </style>
     """
@@ -238,29 +249,44 @@ def render_map_grid(
     roughness: np.ndarray,
     metallic: np.ndarray,
 ) -> None:
-    """Display the three predicted PBR maps in a 3‑column card.
+    """Display predicted PBR maps with a tab selector.
 
     Args:
-        normal: Normal map (H,W,3) float32 in [-1,1] – will be packed
-            to [0,1] for display.
+        normal: Normal map (H,W,3) float32 in [-1,1].
         roughness: Roughness map (H,W,1) float32 in [0,1].
         metallic: Metallic map (H,W,1) float32 in [0,1].
     """
-    def _show_maps():
+    tab_all, tab_n, tab_r, tab_m = st.tabs(
+        ["All maps", "Normal", "Roughness", "Metallic"]
+    )
+
+    normal_disp = np.clip((normal + 1.0) / 2.0, 0.0, 1.0)
+    rough_disp  = roughness.squeeze()
+    metal_disp  = metallic.squeeze()
+
+    with tab_all:
         col1, col2, col3 = st.columns(3)
         with col1:
-            normal_disp = np.clip((normal + 1.0) / 2.0, 0.0, 1.0)
-            st.image(normal_disp, caption="Normal Map", use_container_width=True)
+            st.image(normal_disp, caption="Normal Map",
+                     use_container_width=True)
         with col2:
-            rough_disp = roughness.squeeze()
-            st.image(rough_disp, caption="Roughness", use_container_width=True,
-                     clamp=True)
+            st.image(rough_disp, caption="Roughness",
+                     use_container_width=True, clamp=True)
         with col3:
-            metal_disp = metallic.squeeze()
-            st.image(metal_disp, caption="Metallic", use_container_width=True,
-                     clamp=True)
+            st.image(metal_disp, caption="Metallic",
+                     use_container_width=True, clamp=True)
 
-    render_result_card("Predicted Maps", _show_maps)
+    with tab_n:
+        st.image(normal_disp, caption="Normal Map",
+                 use_container_width=True)
+
+    with tab_r:
+        st.image(rough_disp, caption="Roughness",
+                 use_container_width=True, clamp=True)
+
+    with tab_m:
+        st.image(metal_disp, caption="Metallic",
+                 use_container_width=True, clamp=True)
 
 
 def build_threejs_viewer(
@@ -269,6 +295,7 @@ def build_threejs_viewer(
     metallic_b64: str,
     geometry: str = "sphere",
     height: int = 600,
+    color_b64: str | None = None,
 ) -> str:
     """Create an interactive 3D material preview using Three.js.
 
@@ -295,6 +322,20 @@ def build_threejs_viewer(
     if geometry not in geo_map:
         raise ValueError(f"Unknown geometry '{geometry}'. Choose from {list(geo_map.keys())}")
     geo_code = geo_map[geometry]
+
+    # Build the JS snippet for albedo outside the f-string to avoid escaping issues.
+    if color_b64:
+        albedo_js = (
+            f"const colorTex = new THREE.TextureLoader().load("
+            f"'data:image/png;base64,{color_b64}');"
+            f" colorTex.wrapS = THREE.RepeatWrapping;"
+            f" colorTex.wrapT = THREE.RepeatWrapping;"
+            f" colorTex.repeat.set(2, 2);"
+            f" colorTex.colorSpace = THREE.SRGBColorSpace;"
+            f" materialParams.map = colorTex;"
+        )
+    else:
+        albedo_js = "materialParams.color = new THREE.Color(0.6, 0.6, 0.6);"
 
     html = f"""
     <!DOCTYPE html>
@@ -368,15 +409,16 @@ def build_threejs_viewer(
 
             // Neutral grey albedo makes normal/roughness/metallic detail
             // visible without an envMap. Pure white washes out normal detail.
-            const material = new THREE.MeshStandardMaterial({{
-                color: new THREE.Color(0.6, 0.6, 0.6),
+            const materialParams = {{
                 normalMap: normalTex,
                 normalScale: new THREE.Vector2(1, 1),
                 roughnessMap: roughnessTex,
                 roughness: 1.0,
                 metalnessMap: metallicTex,
                 metalness: 1.0,
-            }});
+            }};
+            {albedo_js}
+            const material = new THREE.MeshStandardMaterial(materialParams);
 
             const geom = {geo_code};
             const mesh = new THREE.Mesh(geom, material);

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """
 app.py – Streamlit entry point for the MatForge application.
 
@@ -19,7 +21,7 @@ from PIL import Image
 from src.classifier import classify_material
 from src.export import export_maps
 from src.inference import run_inference
-from src.postprocess import adjust_gain_offset
+from src.postprocess import adjust_gain_offset, make_tileable_frequency
 from src.quality import evaluate_normal_quality
 from src.sr import release_sr_model, run_sr
 from src.ui_components import (
@@ -118,8 +120,6 @@ def estimate_processing_time(
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
-st.sidebar.markdown("## 🔨 MatForge")
-st.sidebar.caption("PBR Map Prediction")
 st.sidebar.divider()
 
 # ----- file uploader -------------------------------------------------------
@@ -142,7 +142,6 @@ zoom = st.sidebar.slider(
     min_value=0.1,
     max_value=1.0,
     step=0.05,
-    value=st.session_state["zoom"],
     key="zoom",
     help=(
         "Controls how much of the image each 256×256 tile sees before "
@@ -318,9 +317,51 @@ if st.session_state["maps"] is not None:
         else:
             st.caption("Run Generate Maps first.")
 
+    with st.sidebar.expander("Make Tileable"):
+        st.caption(
+            "Removes low-frequency gradients from Roughness and Metallic "
+            "that break tileability after tile-and-merge inference. "
+            "Enable SR Seam Blend if the image was processed with SR."
+        )
+        st.caption(
+            "⚠️ Does not correct large-scale pattern repetition or "
+            "directional lighting baked into the source photo."
+        )
+        sr_seam = st.checkbox(
+            "SR seam blend (use if SR was active)",
+            value=st.session_state.get("use_sr", False),
+            key="tile_sr_seam",
+        )
+        sigma = st.slider(
+            "Low-freq sigma", 32.0, 128.0, 64.0, 8.0,
+            key="tile_sigma",
+            help="Higher values remove broader gradients.",
+        )
+        if st.button("Apply Tileable", key="apply_tileable"):
+            result = make_tileable_frequency(
+                normal=st.session_state["maps_raw"]["normal"],
+                roughness=st.session_state["maps_raw"]["roughness"],
+                metallic=st.session_state["maps_raw"]["metallic"],
+                sr_active=sr_seam,
+                sigma=sigma,
+            )
+            st.session_state["maps"]["normal"]    = result["normal"]
+            st.session_state["maps"]["roughness"] = result["roughness"]
+            st.session_state["maps"]["metallic"]  = result["metallic"]
+            st.success("Tileable maps applied.")
+
 # ===========================================================================
 # Main area
 # ===========================================================================
+
+# Title and device info
+st.markdown(
+    f'<h1 style="margin-bottom:0;">🔨 MatForge</h1>'
+    f'<p style="color:#9A9890; font-size:14px; margin-top:4px; margin-bottom:24px;">'
+    f'PBR Map Prediction · {DEVICE.upper()}</p>',
+    unsafe_allow_html=True,
+)
+
 if st.session_state["maps"] is None:
     st.info(
         "Upload an image in the sidebar and click **Generate Maps** "
@@ -338,7 +379,27 @@ else:
     roughness = maps["roughness"]
     metallic = maps["metallic"]
 
-    # 1. Map grid
+    # 1. Input reference + map grid
+    if st.session_state["input_image"] is not None:
+        with st.expander("Input Image", expanded=False):
+            col_img, col_info = st.columns([2, 1])
+            with col_img:
+                st.image(
+                    st.session_state["input_image"],
+                    caption="Source image",
+                    use_container_width=True,
+                )
+            with col_info:
+                w, h = st.session_state["input_image"].size
+                st.caption(f"**Resolution:** {w}×{h} px")
+                st.caption(f"**Zoom applied:** {st.session_state['zoom']:.2f}")
+                if st.session_state["group_label"]:
+                    st.caption(f"**Material group:** {st.session_state['group_label']}")
+                    st.caption(f"**KNN distance:** {st.session_state['knn_distance']:.3f}")
+                if st.session_state["use_sr"]:
+                    st.caption("**SR:** active (×4)")
+
+    # 2. Map grid
     render_map_grid(normal, roughness, metallic)
 
     # 2. AI content notice
@@ -346,12 +407,22 @@ else:
 
     # 3. 3D Preview expander
     with st.expander("3D Preview", expanded=True):
-        geo = st.radio(
-            "Geometry",
-            options=["sphere", "box", "plane"],
-            key="viewer_geometry",
-            horizontal=True,
-        )
+        col_geo, col_color = st.columns(2)
+        with col_geo:
+            geo = st.radio(
+                "Geometry",
+                options=["sphere", "box", "plane"],
+                key="viewer_geometry",
+                horizontal=True,
+            )
+        with col_color:
+            show_color = st.checkbox(
+                "Show source color",
+                value=False,
+                key="viewer_show_color",
+                help="Uses the original image as albedo. "
+                     "Disables neutral grey base color.",
+            )
 
         def _cap_texture(arr: np.ndarray) -> np.ndarray:
             if arr.shape[0] > 1024 or arr.shape[1] > 1024:
@@ -371,12 +442,30 @@ else:
         r_b64 = image_to_base64(rough_capped)
         m_b64 = image_to_base64(metal_capped)
 
+        # Encode source image as albedo if requested.
+        color_b64 = None
+        if show_color and st.session_state["input_image"] is not None:
+            color_arr = np.array(
+                st.session_state["input_image"]
+            ).astype(np.float32) / 255.0
+            color_arr = _cap_texture(color_arr)
+            color_b64 = image_to_base64(color_arr)
+
         viewer_html = build_threejs_viewer(
             normal_b64=n_b64,
             roughness_b64=r_b64,
             metallic_b64=m_b64,
             geometry=st.session_state["viewer_geometry"],
             height=620,
+            color_b64=color_b64,
+        )
+        viewer_html = build_threejs_viewer(
+            normal_b64=n_b64,
+            roughness_b64=r_b64,
+            metallic_b64=m_b64,
+            geometry=st.session_state["viewer_geometry"],
+            height=620,
+            color_b64=color_b64,
         )
         components.html(viewer_html, height=620)
 
@@ -390,3 +479,23 @@ else:
             render_comparison_slider(input_b64, normal_b64_disp, height=400)
         else:
             st.caption("No reference image available for comparison.")
+
+    # 5. 2x2 Tiling Preview
+    with st.expander("Tiling Preview", expanded=False):
+        st.caption("2×2 tile preview to verify seamless repetition.")
+        _normal_disp = normal_map_to_display(normal)
+        _preview_maps = {
+            "Normal": _normal_disp,
+            "Roughness": roughness.squeeze(),
+            "Metallic": metallic.squeeze(),
+        }
+        for map_name, map_arr in _preview_maps.items():
+            arr_uint8 = (np.clip(map_arr, 0, 1) * 255).astype(np.uint8)
+            if arr_uint8.ndim == 2:
+                arr_uint8 = np.stack([arr_uint8] * 3, axis=-1)
+            tiled = np.concatenate([
+                np.concatenate([arr_uint8, arr_uint8], axis=1),
+                np.concatenate([arr_uint8, arr_uint8], axis=1),
+            ], axis=0)
+            st.image(tiled, caption=f"{map_name} — 2×2 tile",
+                     use_container_width=True)
