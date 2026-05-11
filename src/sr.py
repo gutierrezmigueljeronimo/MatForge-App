@@ -173,6 +173,8 @@ def run_sr(image: Image.Image) -> Image.Image:
 
     Processing is performed on overlapping tiles with a Hann window
     to avoid seam artifacts, following the Real‑ESRGAN inference logic.
+    Padding of half tile size (128 px) is added on all sides before
+    tiling and cropped after upscaling to ensure correct blending at borders.
 
     Args:
         image: Input RGB PIL image of any size.
@@ -182,16 +184,17 @@ def run_sr(image: Image.Image) -> Image.Image:
     """
     model = load_sr_model()
     orig_h, orig_w = image.height, image.width
+    half = TILE // 2  # 128
 
     # PIL → float32 numpy [0,1] → tensor (1,3,H,W)
     img_np = np.array(image, dtype=np.float32) / 255.0
     img_t = torch.from_numpy(img_np).permute(2, 0, 1).unsqueeze(0)  # (1,3,H,W)
     img_t = img_t.to(DEVICE, dtype=DTYPE)
 
-    # Pad so that both dimensions are multiples of STRIDE
-    pad_h = (STRIDE - orig_h % STRIDE) % STRIDE
-    pad_w = (STRIDE - orig_w % STRIDE) % STRIDE
-    img_t = F.pad(img_t, (0, pad_w, 0, pad_h), mode="reflect")
+    # Symmetric padding: half tile on all sides, then ensure multiple of STRIDE
+    pad_h = half + (STRIDE - (orig_h + half) % STRIDE) % STRIDE
+    pad_w = half + (STRIDE - (orig_w + half) % STRIDE) % STRIDE
+    img_t = F.pad(img_t, (half, pad_w, half, pad_h), mode="reflect")
     padded_h, padded_w = img_t.shape[2], img_t.shape[3]
 
     # Hann window for blending (256×256) → upscaled to output tile (1024×1024)
@@ -225,8 +228,8 @@ def run_sr(image: Image.Image) -> Image.Image:
     # Normalise by weight sum
     output = output / (weight + 1e-8)
 
-    # Crop back to original dimensions (remove padding effect)
-    output = output[:, :, :orig_h * 4, :orig_w * 4]
+    # Crop padding: remove half tile on each side (scaled by 4)
+    output = output[:, :, half * 4:(half + orig_h) * 4, half * 4:(half + orig_w) * 4]
 
     # Clamp, convert to uint8, back to PIL
     output = output.clamp(0, 1).squeeze(0).permute(1, 2, 0).cpu().numpy()  # (H*4,W*4,3)
