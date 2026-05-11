@@ -63,7 +63,17 @@ def inject_css() -> None:
     h2 {{ font-size: 20px; font-weight: 500; color: {TEXT_PRIMARY}; }}
     h3 {{ font-size: 16px; font-weight: 500; color: {TEXT_PRIMARY}; }}
 
-    /* Buttons */
+    /* Sidebar section headings (### Tools, ### Export) */
+    [data-testid="stSidebar"] [data-testid="stMarkdown"] h3 {{
+        color: {ACCENT_1};
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin: 4px 0 2px 0;
+    }}
+
+    /* ---- Buttons ---- */
     .stButton > button {{
         background-color: {ACCENT_1};
         color: {BG_PRIMARY};
@@ -74,36 +84,57 @@ def inject_css() -> None:
     .stButton > button:hover {{
         background-color: {ACCENT_2};
     }}
-    /* Secondary button style (applied via a wrapper element) */
     .secondary .stButton > button {{
         background: transparent;
         border: 1px solid {BORDER};
         color: {TEXT_PRIMARY};
     }}
 
-    /* Sliders */
+    /* ---- Sliders ---- */
     .stSlider {{
         accent-color: {ACCENT_1};
     }}
 
-    /* Expanders */
+    /* ---- Expanders ---- */
     .streamlit-expanderHeader {{
         background: {BG_SECONDARY};
         color: {TEXT_PRIMARY};
     }}
 
-    /* Captions */
+    /* ---- Captions ---- */
     .stCaption {{
         color: {TEXT_SECONDARY};
         font-size: 12px;
     }}
 
-    /* Metric labels */
+    /* ---- Metric labels ---- */
     .stMetric label {{
         color: {TEXT_SECONDARY};
     }}
 
-    /* Cards – rendered via render_result_card, no extra CSS needed */
+    /* ---- Selectboxes ---- */
+    [data-testid="stSelectbox"] > div > div {{
+        background-color: {BG_SECONDARY};
+        border: 1px solid {BORDER};
+        color: {TEXT_PRIMARY};
+        border-radius: 6px;
+    }}
+
+    /* ---- Text inputs ---- */
+    [data-testid="stTextInput"] > div > div > input {{
+        background-color: {BG_SECONDARY};
+        border: 1px solid {BORDER};
+        color: {TEXT_PRIMARY};
+        border-radius: 6px;
+    }}
+
+    /* ---- File uploader ---- */
+    [data-testid="stFileUploader"] {{
+        background-color: {BG_SECONDARY};
+        border: 1px solid {BORDER};
+        border-radius: 6px;
+        padding: 4px;
+    }}
     </style>
     """
     st.markdown(google_fonts + css, unsafe_allow_html=True)

@@ -40,6 +40,7 @@ from src.utils import (
     load_and_validate_image,
     apply_perspective_warp,
 )
+from src.ui_components import TEXT_PRIMARY, TEXT_SECONDARY 
 
 # ---------------------------------------------------------------------------
 # Page configuration & design system
@@ -74,6 +75,7 @@ def init_session_state() -> None:
         "maps_adjusted": None,    # state after adjust_gain_offset
         "maps_blended": None,     # state after blend_materials
         "original_image": None,   # pre-SR image, preserved for display metadata
+        "sr_was_used": False,     # True if SR was active during last generation
         "export_state": "Raw",    # default export state
         "viewer_state": "Raw",    # default 3D viewer state
         "tile_preview_state": "Raw",  # default tiling preview state
@@ -143,6 +145,22 @@ def estimate_processing_time(
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
+st.sidebar.markdown(
+    f"""
+    <div style="padding: 16px 8px 8px 8px;">
+        <div style="font-family:'Inter',sans-serif; font-size:20px;
+                    font-weight:500; color:{TEXT_PRIMARY};
+                    letter-spacing:-0.01em;">
+            🔨 MatForge
+        </div>
+        <div style="font-size:11px; color:{TEXT_SECONDARY};
+                    margin-top:2px; letter-spacing:0.04em;">
+            PBR Map Prediction
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 st.sidebar.divider()
 
 # ----- file uploader -------------------------------------------------------
@@ -155,6 +173,7 @@ def _on_file_change() -> None:
     ])
     st.session_state["input_image"] = None
     st.session_state["original_image"] = None
+    st.session_state["sr_was_used"] = False
     st.session_state["warp_confirmed"] = False
 
 uploaded_file = st.sidebar.file_uploader(
@@ -254,6 +273,7 @@ if generate:
                 img = apply_zoom(img, max(st.session_state["zoom"], _min_zoom))
 
                 # 2. Optional SR
+                st.session_state["sr_was_used"] = st.session_state["use_sr"]
                 if st.session_state["use_sr"]:
                     status_box.write("Running Super-Resolution…")
                     img = run_sr(img)
@@ -407,7 +427,7 @@ if st.session_state["maps"] is not None:
         )
         sr_seam = st.checkbox(
             "SR seam blend (use if SR was active)",
-            value=st.session_state.get("use_sr", False),
+            value=st.session_state.get("sr_was_used", False),
             key="tile_sr_seam",
         )
         sigma = st.slider(
@@ -416,10 +436,16 @@ if st.session_state["maps"] is not None:
             help="Higher values remove broader gradients.",
         )
         if st.button("Apply Tileable", key="apply_tileable"):
+            # Resolve source: use most advanced available state
+            _til_source = (
+                st.session_state["maps_calibrated"]
+                or st.session_state["maps_adjusted"]
+                or st.session_state["maps_raw"]
+            )
             result = make_tileable_frequency(
-                normal=st.session_state["maps"]["normal"],
-                roughness=st.session_state["maps"]["roughness"],
-                metallic=st.session_state["maps"]["metallic"],
+                normal=_til_source["normal"],
+                roughness=_til_source["roughness"],
+                metallic=_til_source["metallic"],
                 sr_active=sr_seam,
                 sigma=sigma,
             )
@@ -427,9 +453,9 @@ if st.session_state["maps"] is not None:
             st.session_state["maps"]["roughness"] = result["roughness"]
             st.session_state["maps"]["metallic"]  = result["metallic"]
             st.session_state["maps_tileable"] = {
-                "normal":    st.session_state["maps"]["normal"].copy(),
-                "roughness": st.session_state["maps"]["roughness"].copy(),
-                "metallic":  st.session_state["maps"]["metallic"].copy(),
+                "normal":    result["normal"].copy(),
+                "roughness": result["roughness"].copy(),
+                "metallic":  result["metallic"].copy(),
             }
             st.success("Tileable maps applied.")
 
@@ -726,10 +752,10 @@ else:
     # 2. Map grid
     render_map_grid(normal, roughness, metallic)
 
-    # 2. AI content notice
+    # 4. AI content notice
     render_ai_output_notice()
 
-    # 3. 3D Preview expander
+    # 5. 3D Preview expander
     with st.expander("3D Preview", expanded=True):
         # State selector — mirrors the export state logic
         _viewer_states = {"Raw": "maps_raw"}
@@ -825,7 +851,7 @@ else:
         )
         components.html(viewer_html, height=620)
 
-    # 4. Comparison expander
+    # 6. Comparison expander
     with st.expander("Comparison", expanded=False):
         if st.session_state["maps_raw"] is None:
             st.caption("Generate maps first to use the comparison tool.")
@@ -899,7 +925,7 @@ else:
 
             render_comparison_slider(before_b64, after_b64, height=400)
 
-    # 5. Material Blender
+    # 7. Material Blender
     with st.expander("Material Blender (RNM)", expanded=False):
         st.caption(
             "Blend the current material (A) with a second material (B) "
@@ -1007,7 +1033,7 @@ else:
                 st.session_state["_pending_tile_state"]   = "Blended"
                 st.rerun()
 
-    # 6. 2x2 Tiling Preview
+    # 8. 2x2 Tiling Preview
     with st.expander("Tiling Preview", expanded=False):
         st.caption("2×2 tile preview to verify seamless repetition.")
 
