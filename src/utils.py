@@ -253,3 +253,40 @@ def invalidate_session_keys(keys: list[str]) -> None:
     for key in keys:
         if key in st.session_state:
             st.session_state[key] = None
+
+def estimate_processing_time(
+    image: Image.Image,
+    zoom: float,
+    use_sr: bool,
+) -> tuple[int, float]:
+    """Estimate tile count and total processing time in seconds.
+
+    Based on benchmarked throughput on GTX 1650 Max-Q with float32.
+    Constants are provisional until measured on real hardware.
+
+    Args:
+        image:  Input PIL image before zoom is applied.
+        zoom:   Zoom factor (0.1–1.0).
+        use_sr: Whether the SR module will be active.
+
+    Returns:
+        Tuple of (n_tiles, estimated_seconds).
+    """
+    TILE_SIZE = 256
+    STRIDE = 128
+    MATFORGE_SPT = 0.15
+    SR_OVERHEAD_SECONDS = 9.0
+
+    w, h = image.size
+    eff_w = max(256, int(round(w * zoom)))
+    eff_h = max(256, int(round(h * zoom)))
+
+    tiles_x = max(1, 1 + (eff_w - TILE_SIZE) // STRIDE)
+    tiles_y = max(1, 1 + (eff_h - TILE_SIZE) // STRIDE)
+    n_tiles = tiles_x * tiles_y
+
+    seconds = n_tiles * MATFORGE_SPT
+    if use_sr:
+        seconds += SR_OVERHEAD_SECONDS
+
+    return n_tiles, seconds

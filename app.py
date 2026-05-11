@@ -35,6 +35,7 @@ from src.ui_components import (
 )
 from src.utils import (
     apply_zoom,
+    estimate_processing_time,
     get_effective_resolution,
     invalidate_session_keys,
     load_and_validate_image,
@@ -100,47 +101,6 @@ for _pending, _target in [
     if st.session_state.get(_pending):
         st.session_state[_target] = st.session_state[_pending]
         st.session_state[_pending] = None
-
-# ---------------------------------------------------------------------------
-# Time estimation helper (to be moved to utils in a future refactor)
-# ---------------------------------------------------------------------------
-def estimate_processing_time(
-    image: Image.Image,
-    zoom: float,
-    use_sr: bool,
-) -> tuple[int, float]:
-    """Estimate tile count and total processing time in seconds.
-
-    Based on benchmarked throughput on GTX 1650 Max-Q with float32.
-    Constants are provisional until measured on real hardware.
-
-    Args:
-        image: Input PIL image before zoom is applied.
-        zoom: Zoom factor (0.1–1.0).
-        use_sr: Whether the SR module will be active.
-
-    Returns:
-        Tuple of (n_tiles, estimated_seconds).
-    """
-    TILE_SIZE = 256
-    STRIDE = 128
-    MATFORGE_SPT = 0.15          # seconds per tile, provisional
-    SR_OVERHEAD_SECONDS = 9.0
-
-    w, h = image.size
-    eff_w = max(256, int(round(w * zoom)))
-    eff_h = max(256, int(round(h * zoom)))
-
-    tiles_x = max(1, 1 + (eff_w - TILE_SIZE) // STRIDE)
-    tiles_y = max(1, 1 + (eff_h - TILE_SIZE) // STRIDE)
-    n_tiles = tiles_x * tiles_y
-
-    seconds = n_tiles * MATFORGE_SPT
-    if use_sr:
-        seconds += SR_OVERHEAD_SECONDS
-
-    return n_tiles, seconds
-
 
 # ---------------------------------------------------------------------------
 # Sidebar
