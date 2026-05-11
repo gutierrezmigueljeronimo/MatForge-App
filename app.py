@@ -490,6 +490,13 @@ def _render_perspective_canvas(image: Image.Image, canvas_height: int = 460) -> 
     img_np = np.array(image)
     ih, iw = img_np.shape[:2]
 
+    # Derive canvas height from the image aspect ratio so drawImage
+    # fills the canvas without stretching. Cap at canvas_height.
+    container_width = 704  # approximate main area width in Streamlit wide layout
+    aspect_ratio = ih / iw
+    computed_height = min(canvas_height, int(container_width * aspect_ratio))
+    canvas_height = max(200, computed_height)
+
     # Build base64 of the source image for embedding in the canvas.
     buf = io.BytesIO()
     image.save(buf, format="PNG")
@@ -513,7 +520,7 @@ def _render_perspective_canvas(image: Image.Image, canvas_height: int = 460) -> 
     html = f"""
 <style>
   #wc {{ position:relative; width:100%; user-select:none; }}
-  #cv {{ width:100%; height:{canvas_height}px; display:block; border-radius:8px; cursor:crosshair; }}
+  #cv {{ width:100%; display:block; border-radius:8px; cursor:crosshair; }}
   #wh {{ margin-top:6px; font-size:12px; color:#9A9890; font-family:sans-serif; }}
 </style>
 <div id="wc"><canvas id="cv"></canvas>
@@ -527,7 +534,12 @@ def _render_perspective_canvas(image: Image.Image, canvas_height: int = 460) -> 
   const R=11;
   const i2c=(x,y)=>[x*cv.width/IW, y*cv.height/IH];
   const c2i=(x,y)=>[x*IW/cv.width, y*IH/cv.height];
-  function rsz(){{ const r=cv.getBoundingClientRect(); cv.width=r.width||800; cv.height=r.height||{canvas_height}; draw(); }}
+  function rsz(){{
+    const r=cv.getBoundingClientRect();
+    cv.width = r.width || 800;
+    cv.height = cv.width * (IH / IW);
+    draw();
+  }}
   function draw(){{
     if(!img.complete) return;
     ctx.clearRect(0,0,cv.width,cv.height);
@@ -560,7 +572,7 @@ def _render_perspective_canvas(image: Image.Image, canvas_height: int = 460) -> 
   img.onload=rsz; window.addEventListener('resize',rsz); if(img.complete) rsz();
 }})();
 </script>"""
-    components.html(html, height=canvas_height + 40, scrolling=False)
+    components.html(html, height=800, scrolling=True)
 
 
 if st.session_state["input_image"] is not None:
@@ -608,7 +620,7 @@ if st.session_state["input_image"] is not None:
         col_apply, col_reset = st.columns([2, 1])
         with col_apply:
             if st.button(
-                "✅ Apply perspective correction",
+                "Apply perspective correction",
                 use_container_width=True,
                 key="btn_warp_apply",
                 disabled=st.session_state["warped_image"] is None,
@@ -639,11 +651,13 @@ if st.session_state["maps"] is None:
         "to predict Normal, Roughness and Metallic maps."
     )
     if st.session_state["input_image"] is not None:
-        st.image(
-            st.session_state["input_image"],
-            caption="Uploaded image",
-            use_container_width=False,
-        )
+            _preview = st.session_state["input_image"].copy()
+            if _preview.width > 480:
+                _r = 480 / _preview.width
+                _preview = _preview.resize(
+                    (480, int(_preview.height * _r)), Image.LANCZOS
+                )
+            st.image(_preview, caption="Uploaded image", use_container_width=False)
 else:
     maps = st.session_state["maps"]
     normal = maps["normal"]
@@ -655,11 +669,24 @@ else:
         with st.expander("Input Image", expanded=False):
             col_img, col_info = st.columns([2, 1])
             with col_img:
-                st.image(
-                    st.session_state["input_image"],
-                    caption="Source image",
-                    use_container_width=True,
+                _input_display = st.session_state["input_image"].copy()
+                if _input_display.width > 480:
+                    _ratio = 480 / _input_display.width
+                    _input_display = _input_display.resize(
+                        (480, int(_input_display.height * _ratio)),
+                        Image.LANCZOS,
+                    )
+                _buf = io.BytesIO()
+                _input_display.save(_buf, format="PNG")
+                _input_b64 = __import__("base64").b64encode(
+                    _buf.getvalue()
+                ).decode("utf-8")
+                st.markdown(
+                    f'<img src="data:image/png;base64,{_input_b64}" '
+                    f'style="max-width:480px; width:100%; border-radius:8px;">',
+                    unsafe_allow_html=True,
                 )
+                st.caption("Source image")
             with col_info:
                 w, h = st.session_state["input_image"].size
                 st.caption(f"**Resolution:** {w}×{h} px")
