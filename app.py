@@ -38,6 +38,7 @@ from src.utils import (
     get_effective_resolution,
     invalidate_session_keys,
     load_and_validate_image,
+    apply_perspective_warp,
 )
 
 # ---------------------------------------------------------------------------
@@ -70,7 +71,11 @@ def init_session_state() -> None:
         "maps_raw": None,         # unmodified inference output, source of truth for R/M adjust
         "maps_calibrated": None,  # state after calibrate_by_group
         "maps_tileable": None,    # state after make_tileable_frequency
+        "maps_adjusted": None,    # state after adjust_gain_offset
         "export_state": "Raw",    # default export state
+        "warp_points": None,      # list[list[int]] — 4 puntos en coords de imagen original
+        "warped_image": None,     # PIL.Image — resultado del warp, o None
+        "warp_confirmed": False,  # True cuando el usuario hace Apply
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -128,10 +133,12 @@ st.sidebar.divider()
 # ----- file uploader -------------------------------------------------------
 def _on_file_change() -> None:
     invalidate_session_keys([
-        "maps", "maps_raw", "maps_calibrated", "maps_tileable",
-        "group_label", "knn_distance"
+        "maps", "maps_raw", "maps_calibrated", "maps_tileable", "maps_adjusted",
+        "group_label", "knn_distance",
+        "warp_points", "warped_image",
     ])
     st.session_state["input_image"] = None
+    st.session_state["warp_confirmed"] = False
 
 uploaded_file = st.sidebar.file_uploader(
     "Upload image",
@@ -208,9 +215,13 @@ if generate:
     else:
         try:
             with st.status("Generating PBR maps…", expanded=True) as status_box:
+                # 0. Perspective warp injection
+                img = st.session_state["input_image"]
+                if st.session_state["warp_confirmed"] and st.session_state["warped_image"] is not None:
+                    img = st.session_state["warped_image"]
+
                 # 1. Load & zoom
                 status_box.write("Loading image…")
-                img = st.session_state["input_image"]
                 # Prevent zoom from reducing the image below one tile dimension.
                 _min_zoom = max(0.1, 256 / min(img.width, img.height))
                 if st.session_state["zoom"] < _min_zoom:
@@ -258,10 +269,10 @@ if st.session_state["maps"] is not None:
     with st.sidebar.expander("Adjust R/M"):
         r_gain = st.slider("Roughness gain", 0.5, 2.0, 1.0, 0.05, key="r_gain")
         r_offset = st.slider("Roughness offset", -0.5, 0.5, 0.0, 0.05,
-                             key="r_offset")
+                            key="r_offset")
         m_gain = st.slider("Metallic gain", 0.5, 2.0, 1.0, 0.05, key="m_gain")
         m_offset = st.slider("Metallic offset", -0.5, 0.5, 0.0, 0.05,
-                             key="m_offset")
+                            key="m_offset")
         if st.button("Apply R/M adjustments", key="apply_rm"):
             raw = st.session_state["maps_raw"]
             st.session_state["maps"]["roughness"] = adjust_gain_offset(
@@ -270,6 +281,11 @@ if st.session_state["maps"] is not None:
             st.session_state["maps"]["metallic"] = adjust_gain_offset(
                 raw["metallic"], m_gain, m_offset
             )
+            st.session_state["maps_adjusted"] = {
+                "normal":    st.session_state["maps"]["normal"].copy(),
+                "roughness": st.session_state["maps"]["roughness"].copy(),
+                "metallic":  st.session_state["maps"]["metallic"].copy(),
+            }
 
     with st.sidebar.expander("Normal Map Quality"):
         if st.button("Evaluate quality", key="eval_quality"):
@@ -409,6 +425,8 @@ if st.session_state["maps"] is not None:
 
     # Build available export states dynamically
     _export_states = {"Raw": "maps_raw"}
+    if st.session_state["maps_adjusted"] is not None:
+        _export_states["Adjusted"] = "maps_adjusted"
     if st.session_state["maps_calibrated"] is not None:
         _export_states["Calibrated"] = "maps_calibrated"
     if st.session_state["maps_tileable"] is not None:
@@ -448,6 +466,172 @@ st.markdown(
     f'PBR Map Prediction · {DEVICE.upper()}</p>',
     unsafe_allow_html=True,
 )
+
+# ---------------------------------------------------------------------------
+# Perspective Correction (always visible, independent of maps state)
+# ---------------------------------------------------------------------------
+def _parse_warp_points(raw: str) -> list[list[int]] | None:
+    """Parse 'x0,y0,x1,y1,x2,y2,x3,y3' into [[x0,y0], ...]. Returns None if malformed."""
+    raw = raw.strip()
+    if not raw:
+        return None
+    try:
+        values = [int(float(v)) for v in raw.split(",")]
+        if len(values) != 8:
+            return None
+        return [[values[i * 2], values[i * 2 + 1]] for i in range(4)]
+    except (ValueError, IndexError):
+        return None
+
+
+def _render_perspective_canvas(image: Image.Image, canvas_height: int = 460) -> None:
+    """Render the interactive 4-point perspective correction canvas."""
+    import json
+    img_np = np.array(image)
+    ih, iw = img_np.shape[:2]
+
+    # Build base64 of the source image for embedding in the canvas.
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    b64 = __import__("base64").b64encode(buf.getvalue()).decode()
+
+    margin_x = int(iw * 0.10)
+    margin_y = int(ih * 0.10)
+    default_pts = [
+        [margin_x,        margin_y],
+        [iw - margin_x,   margin_y],
+        [iw - margin_x,   ih - margin_y],
+        [margin_x,        ih - margin_y],
+    ]
+    pts_init = (
+        st.session_state["warp_points"]
+        if st.session_state["warp_points"] is not None
+        else default_pts
+    )
+    pts_json = json.dumps(pts_init)
+
+    html = f"""
+<style>
+  #wc {{ position:relative; width:100%; user-select:none; }}
+  #cv {{ width:100%; height:{canvas_height}px; display:block; border-radius:8px; cursor:crosshair; }}
+  #wh {{ margin-top:6px; font-size:12px; color:#9A9890; font-family:sans-serif; }}
+</style>
+<div id="wc"><canvas id="cv"></canvas>
+<p id="wh">Drag the handles to frame the surface, then click <strong>↩ Update preview</strong> below.</p></div>
+<script>
+(function(){{
+  const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+  const IW={iw}, IH={ih};
+  const img=new Image(); img.src='data:image/png;base64,{b64}';
+  let pts={pts_json}, drag=-1;
+  const R=11;
+  const i2c=(x,y)=>[x*cv.width/IW, y*cv.height/IH];
+  const c2i=(x,y)=>[x*IW/cv.width, y*IH/cv.height];
+  function rsz(){{ const r=cv.getBoundingClientRect(); cv.width=r.width||800; cv.height=r.height||{canvas_height}; draw(); }}
+  function draw(){{
+    if(!img.complete) return;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ctx.drawImage(img,0,0,cv.width,cv.height);
+    const [[x0,y0],[x1,y1],[x2,y2],[x3,y3]]=pts.map(p=>i2c(...p));
+    ctx.save(); ctx.beginPath();
+    ctx.rect(0,0,cv.width,cv.height);
+    ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.lineTo(x2,y2); ctx.lineTo(x3,y3); ctx.closePath();
+    ctx.fillStyle='rgba(0,0,0,0.52)'; ctx.fill('evenodd'); ctx.restore();
+    ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.lineTo(x2,y2); ctx.lineTo(x3,y3); ctx.closePath();
+    ctx.strokeStyle='#E8A835'; ctx.lineWidth=2; ctx.stroke();
+    [[x0,y0],[x1,y1],[x2,y2],[x3,y3]].forEach(([cx,cy])=>{{
+      ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2);
+      ctx.fillStyle='#E8A835'; ctx.fill();
+      ctx.strokeStyle='#1C1B18'; ctx.lineWidth=2; ctx.stroke();
+    }});
+  }}
+  function hit(cx,cy){{ for(let i=0;i<4;i++){{ const [hx,hy]=i2c(...pts[i]); if(Math.hypot(cx-hx,cy-hy)<=R+5) return i; }} return -1; }}
+  function epos(e){{ const r=cv.getBoundingClientRect(); return e.touches?[e.touches[0].clientX-r.left,e.touches[0].clientY-r.top]:[e.clientX-r.left,e.clientY-r.top]; }}
+  function push(){{
+    const flat=pts.map(p=>[Math.round(p[0]),Math.round(p[1])].join(',')).join(',');
+    try{{ const u=new URL(window.parent.location.href); u.searchParams.set('warp',flat); window.parent.history.replaceState(null,'',u.toString()); }}catch(e){{}}
+  }}
+  cv.addEventListener('mousedown',e=>{{ drag=hit(...epos(e)); }});
+  window.addEventListener('mouseup',()=>{{ if(drag>=0) push(); drag=-1; }});
+  cv.addEventListener('mousemove',e=>{{ if(drag<0) return; const [cx,cy]=epos(e); pts[drag]=c2i(Math.max(0,Math.min(cv.width,cx)),Math.max(0,Math.min(cv.height,cy))); draw(); }});
+  cv.addEventListener('touchstart',e=>{{e.preventDefault(); drag=hit(...epos(e));}},{{passive:false}});
+  window.addEventListener('touchend',()=>{{ if(drag>=0) push(); drag=-1; }});
+  cv.addEventListener('touchmove',e=>{{ e.preventDefault(); if(drag<0) return; const [cx,cy]=epos(e); pts[drag]=c2i(Math.max(0,Math.min(cv.width,cx)),Math.max(0,Math.min(cv.height,cy))); draw(); }},{{passive:false}});
+  img.onload=rsz; window.addEventListener('resize',rsz); if(img.complete) rsz();
+}})();
+</script>"""
+    components.html(html, height=canvas_height + 40, scrolling=False)
+
+
+if st.session_state["input_image"] is not None:
+    with st.expander("Perspective Correction", expanded=False):
+        st.caption(
+            "Drag the **four amber handles** to frame the flat surface. "
+            "Click **↩ Update preview** to apply and preview the crop. "
+            "Then click **Apply** to use it as pipeline input."
+        )
+
+        if st.button("↩ Update preview", use_container_width=True, key="btn_warp_update"):
+            warp_param = st.query_params.get("warp", "")
+            if warp_param:
+                pts = _parse_warp_points(warp_param)
+                if pts is not None:
+                    st.session_state["warp_points"] = pts
+                    try:
+                        st.session_state["warped_image"] = apply_perspective_warp(
+                            st.session_state["input_image"], pts
+                        )
+                    except Exception as exc:
+                        st.error(f"Warp failed: {exc}")
+                        st.session_state["warped_image"] = None
+                st.query_params.clear()
+
+        _render_perspective_canvas(st.session_state["input_image"])
+
+        if st.session_state["warped_image"] is not None:
+            col_w, col_t = st.columns(2)
+            with col_w:
+                st.caption("**Corrected crop**")
+                st.image(
+                    st.session_state["warped_image"],
+                    use_container_width=True,
+                )
+            with col_t:
+                st.caption("**Tiling 2×2 preview**")
+                _warp_np = np.array(st.session_state["warped_image"])
+                _tiled = np.concatenate([
+                    np.concatenate([_warp_np, _warp_np], axis=1),
+                    np.concatenate([_warp_np, _warp_np], axis=1),
+                ], axis=0)
+                st.image(_tiled, use_container_width=True)
+
+        col_apply, col_reset = st.columns([2, 1])
+        with col_apply:
+            if st.button(
+                "✅ Apply perspective correction",
+                use_container_width=True,
+                key="btn_warp_apply",
+                disabled=st.session_state["warped_image"] is None,
+            ):
+                st.session_state["warp_confirmed"] = True
+                invalidate_session_keys([
+                    "maps", "maps_raw", "maps_calibrated", "maps_tileable",
+                    "group_label", "knn_distance",
+                ])
+                st.rerun()
+        with col_reset:
+            if st.button("↺ Reset", use_container_width=True, key="btn_warp_reset"):
+                st.session_state["warp_points"] = None
+                st.session_state["warped_image"] = None
+                st.session_state["warp_confirmed"] = False
+                invalidate_session_keys([
+                    "maps", "maps_raw", "maps_calibrated", "maps_tileable",
+                    "group_label", "knn_distance",
+                ])
+                st.rerun()
+
+        if st.session_state["warp_confirmed"]:
+            st.info("**Correction active** — pipeline will use the corrected crop.")
 
 if st.session_state["maps"] is None:
     st.info(
@@ -564,6 +748,8 @@ else:
         else:
             # Build available states for comparison
             comp_states = {"Raw": "maps_raw"}
+            if st.session_state["maps_adjusted"] is not None:
+                comp_states["Adjusted"] = "maps_adjusted"
             if st.session_state["maps_calibrated"] is not None:
                 comp_states["Calibrated"] = "maps_calibrated"
             if st.session_state["maps_tileable"] is not None:
