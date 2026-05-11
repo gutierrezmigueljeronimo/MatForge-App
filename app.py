@@ -21,7 +21,7 @@ from PIL import Image
 from src.classifier import classify_material
 from src.export import export_maps
 from src.inference import run_inference
-from src.postprocess import adjust_gain_offset, blend_materials, calibrate_by_group, make_tileable_frequency
+from src.postprocess import adjust_gain_offset, blend_materials, calibrate_by_group, generate_variations, make_tileable_frequency
 from src.quality import evaluate_normal_quality
 from src.sr import release_sr_model, run_sr
 from src.ui_components import (
@@ -77,6 +77,7 @@ def init_session_state() -> None:
         "maps_blended": None,     # state after blend_materials
         "original_image": None,   # pre-SR image, preserved for display metadata
         "sr_was_used": False,     # True if SR was active during last generation
+        "maps_variations": None,  # state after generate_variations (selected variant)
         "export_state": "Raw",    # default export state
         "viewer_state": "Raw",    # default 3D viewer state
         "tile_preview_state": "Raw",  # default tiling preview state
@@ -127,7 +128,7 @@ st.sidebar.divider()
 def _on_file_change() -> None:
     invalidate_session_keys([
         "maps", "maps_raw", "maps_calibrated", "maps_tileable",
-        "maps_adjusted", "maps_blended",
+        "maps_adjusted", "maps_blended", "maps_variations",
         "group_label", "knn_distance",
         "warp_points", "warped_image",
     ])
@@ -262,6 +263,8 @@ if generate:
                 st.session_state["maps_calibrated"] = None
                 st.session_state["maps_tileable"]   = None
                 st.session_state["maps_blended"]    = None
+                st.session_state["_variations_list"] = None
+                st.session_state["maps_variations"] = None
                 st.session_state["viewer_state"]    = "Raw"
                 st.session_state["export_state"]    = "Raw"
 
@@ -375,7 +378,7 @@ if st.session_state["maps"] is not None:
         else:
             st.caption("Run Generate Maps first.")
 
-    with st.sidebar.expander("Make Tileable"):
+    with st.sidebar.expander("Make Tileable (Beta)"):
         st.caption(
             "Removes low-frequency gradients from Roughness and Metallic "
             "that break tileability after tile-and-merge inference. "
@@ -385,6 +388,13 @@ if st.session_state["maps"] is not None:
             "Caution: Does not correct large-scale pattern repetition or "
             "directional lighting baked into the source photo."
         )
+        # Source info
+        _til_active = (
+            "Calibrated" if st.session_state["maps_calibrated"] is not None
+            else "Adjusted" if st.session_state["maps_adjusted"] is not None
+            else "Raw"
+        )
+        st.caption(f"ℹ Operates on: **{_til_active}** maps.")
         sr_seam = st.checkbox(
             "SR seam blend (use if SR was active)",
             value=st.session_state.get("sr_was_used", False),
@@ -444,6 +454,8 @@ if st.session_state["maps"] is not None:
         _export_states["Adjusted"] = "maps_adjusted"
     if st.session_state["maps_blended"] is not None:
         _export_states["Blended"] = "maps_blended"
+    if st.session_state["maps_variations"] is not None:
+        _export_states["Variation"] = "maps_variations"
     if st.session_state["maps_calibrated"] is not None:
         _export_states["Calibrated"] = "maps_calibrated"
     if st.session_state["maps_tileable"] is not None:
@@ -723,6 +735,8 @@ else:
             _viewer_states["Adjusted"] = "maps_adjusted"
         if st.session_state["maps_blended"] is not None:
             _viewer_states["Blended"] = "maps_blended"
+        if st.session_state["maps_variations"] is not None:
+            _viewer_states["Variation"] = "maps_variations"
         if st.session_state["maps_calibrated"] is not None:
             _viewer_states["Calibrated"] = "maps_calibrated"
         if st.session_state["maps_tileable"] is not None:
@@ -822,6 +836,8 @@ else:
                 comp_states["Adjusted"] = "maps_adjusted"
             if st.session_state["maps_blended"] is not None:
                 comp_states["Blended"] = "maps_blended"
+            if st.session_state["maps_variations"] is not None:
+                comp_states["Variation"] = "maps_variations"
             if st.session_state["maps_calibrated"] is not None:
                 comp_states["Calibrated"] = "maps_calibrated"
             if st.session_state["maps_tileable"] is not None:
@@ -993,7 +1009,74 @@ else:
                 st.session_state["_pending_tile_state"]   = "Blended"
                 st.rerun()
 
-    # 8. 2x2 Tiling Preview
+    # 8. Procedural Variations
+    with st.expander("Procedural Variations", expanded=False):
+        st.caption(
+            "Generate procedural variations of the base material using "
+            "noise-based techniques (zonal mixing, worn edges, random scaling). "
+        )
+        st.caption("ℹ Operates on: **Raw** maps.")
+        col_v1, col_v2 = st.columns(2)
+        with col_v1:
+            n_variants = st.slider(
+                "Number of variants", 1, 4, 4, 1,
+                key="variations_n",
+            )
+        with col_v2:
+            var_seed = st.number_input(
+                "Seed", min_value=0, max_value=9999, value=42, step=1,
+                key="variations_seed",
+            )
+
+        if st.button("Generate Variations", key="btn_generate_variations"):
+            _raw = st.session_state["maps_raw"]
+            _variants = generate_variations(
+                roughness=_raw["roughness"],
+                metallic=_raw["metallic"],
+                normal=_raw["normal"],
+                n_variants=n_variants,
+                seed=int(var_seed),
+            )
+            st.session_state["_variations_list"] = _variants
+
+        if st.session_state.get("_variations_list"):
+            _variants = st.session_state["_variations_list"]
+            st.caption(f"{len(_variants)} variant(s) generated. Select one to preview and apply.")
+
+            # Preview grid
+            _v_cols = st.columns(len(_variants))
+            for _i, (_vcol, _v) in enumerate(zip(_v_cols, _variants)):
+                with _vcol:
+                    _r_disp = (_v["roughness"].squeeze() * 255).clip(0, 255).astype(np.uint8)
+                    st.image(_r_disp, caption=f"Variant {_i + 1} — R", use_container_width=True)
+
+            selected_variant = st.selectbox(
+                "Select variant to apply",
+                options=[f"Variant {i + 1}" for i in range(len(_variants))],
+                key="variations_selected",
+            )
+
+            if st.button("Apply Variation", key="btn_apply_variation"):
+                _idx = int(selected_variant.split()[-1]) - 1
+                _v = _variants[_idx]
+                _normal = _v.get("normal", st.session_state["maps_raw"]["normal"])
+                st.session_state["maps_variations"] = {
+                    "normal":    _normal,
+                    "roughness": _v["roughness"],
+                    "metallic":  _v["metallic"],
+                }
+                st.session_state["maps"]["normal"]    = _normal
+                st.session_state["maps"]["roughness"] = _v["roughness"]
+                st.session_state["maps"]["metallic"]  = _v["metallic"]
+                st.session_state["_pending_viewer_state"] = "Variation"
+                st.session_state["_pending_export_state"] = "Variation"
+                st.session_state["_pending_tile_state"]   = "Variation"
+                st.rerun()
+
+        if st.session_state["maps_variations"] is not None:
+            st.info("**Variation active** — select 'Variation' in viewer and export.")
+
+    # 9. 2x2 Tiling Preview
     with st.expander("Tiling Preview", expanded=False):
         st.caption("2×2 tile preview to verify seamless repetition.")
 
@@ -1003,6 +1086,8 @@ else:
             _tile_states["Adjusted"] = "maps_adjusted"
         if st.session_state["maps_blended"] is not None:
             _tile_states["Blended"] = "maps_blended"
+        if st.session_state["maps_variations"] is not None:
+            _tile_states["Variation"] = "maps_variations"
         if st.session_state["maps_calibrated"] is not None:
             _tile_states["Calibrated"] = "maps_calibrated"
         if st.session_state["maps_tileable"] is not None:

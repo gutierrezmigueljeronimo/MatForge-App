@@ -26,6 +26,11 @@ def _get_noise_generator():
     # Try pyfastnoiselite first
     try:
         import pyfastnoiselite as pyn
+        # Verify the API is functional before committing to this backend
+        _test_fn = pyn.FastNoiseLite()
+        import numpy as _np
+        _test_fn.GetNoise(_np.float32(0.0), _np.float32(0.0))
+        del _test_fn, _np
 
         class FastNoiseWrapper:
             def __init__(self):
@@ -43,7 +48,7 @@ def _get_noise_generator():
         _noise_generator = FastNoiseWrapper
         return _noise_generator
 
-    except ImportError:
+    except Exception:
         pass
 
     # Fallback to opensimplex
@@ -55,7 +60,11 @@ def _get_noise_generator():
                 self._simplex = OpenSimplex(seed)
 
             def noise2D(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
-                return self._simplex.noise2(x, y).astype(np.float32)
+                vfunc = np.vectorize(
+                    lambda xi, yi: self._simplex.noise2(float(xi), float(yi)),
+                    otypes=[np.float32],
+                )
+                return vfunc(x, y)
 
             def seed(self, s: int):
                 self._simplex = OpenSimplex(s)
@@ -64,7 +73,7 @@ def _get_noise_generator():
         _noise_generator = SimplexWrapper
         return _noise_generator
 
-    except ImportError:
+    except Exception:
         _noise_generator = None
         return None
 
@@ -352,7 +361,8 @@ def generate_variations(
         n_var = normal.copy() if normal is not None else None
 
         if technique == "zonal":
-            gen = GenClass(seed + i)
+            gen = GenClass()
+            gen.seed(seed + i)
             fbm = _generate_fbm(gen, r_var.shape[0], r_var.shape[1],
                                 frequency=4.0, octaves=3, persistence=0.5,
                                 seed_offset=seed + i)
@@ -375,7 +385,8 @@ def generate_variations(
                 if grad_mag.max() > 1e-6:
                     grad_mag /= grad_mag.max()
                 # FBM low-frequency noise to mask edges
-                gen = GenClass(i)  # need not be the same seed, just reproducible
+                gen = GenClass()
+                gen.seed(i)
                 noise_mask = _generate_fbm(gen, r_var.shape[0], r_var.shape[1],
                                            frequency=2.0, octaves=2, persistence=0.5,
                                            seed_offset=seed + i)
