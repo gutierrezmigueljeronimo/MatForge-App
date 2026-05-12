@@ -274,7 +274,7 @@ def estimate_processing_time(
     """
     TILE_SIZE = 256
     STRIDE = 128
-    MATFORGE_SPT = 0.15
+    MATFORGE_SPT = 0.12  # measured: ~0.10–0.14 s/tile on GTX 1650 Max-Q, float32
     SR_OVERHEAD_SECONDS = 9.0
 
     w, h = image.size

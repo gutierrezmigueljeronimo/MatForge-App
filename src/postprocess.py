@@ -370,7 +370,7 @@ def generate_variations(
             # Reshape mask to match roughness channels if needed
             if r_var.ndim == 3:
                 mask = mask.reshape(r_var.shape)
-            shifted = np.clip(roughness + fbm.reshape(r_var.shape) * 0.15, 0.0, 1.0)
+            shifted = np.clip(roughness + fbm.reshape(r_var.shape) * 0.22, 0.0, 1.0)
             r_var = roughness * (1.0 - mask) + shifted * mask
 
         elif technique == "worn":
@@ -394,12 +394,12 @@ def generate_variations(
                 edge_mask = grad_mag * noise_mask
                 edge_mask = np.clip(edge_mask, 0.0, 1.0)
                 # Darken roughness in worn areas
-                r_var = r_var * (1.0 - edge_mask.reshape(r_var.shape) * 0.3)
+                r_var = r_var * (1.0 - edge_mask.reshape(r_var.shape) * 0.45)
                 r_var = np.clip(r_var, 0.0, 1.0)
 
         elif technique == "scale":
             # Random scale factor
-            sf = rng.uniform(0.85, 1.15)
+            sf = rng.uniform(0.78, 1.22)
             new_h = int(round(r_var.shape[0] * sf))
             new_w = int(round(r_var.shape[1] * sf))
 

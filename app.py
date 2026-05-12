@@ -298,8 +298,17 @@ if st.session_state["maps"] is not None:
                 "roughness": st.session_state["maps"]["roughness"].copy(),
                 "metallic":  st.session_state["maps"]["metallic"].copy(),
             }
+            st.success("R/M adjustments applied.")
 
     with st.sidebar.expander("Normal Map Quality"):
+        if st.session_state["maps"] is not None:
+            _nq_img = st.session_state.get("original_image") or st.session_state["input_image"]
+            if _nq_img is not None:
+                _nq_eff_w = max(256, int(round(_nq_img.width * st.session_state["zoom"])))
+                _nq_eff_h = max(256, int(round(_nq_img.height * st.session_state["zoom"])))
+                _nq_px = _nq_eff_w * _nq_eff_h
+                _nq_est = max(1, round(_nq_px / 10_000))
+                st.caption(f"Estimated eval time: ~{_nq_est} s (CPU-intensive)")
         if st.button("Evaluate quality", key="eval_quality"):
             result = evaluate_normal_quality(st.session_state["maps"]["normal"])
             st.metric("Overall score", f"{result['overall_score']:.2f}")
@@ -394,7 +403,7 @@ if st.session_state["maps"] is not None:
             else "Adjusted" if st.session_state["maps_adjusted"] is not None
             else "Raw"
         )
-        st.caption(f"ℹ Operates on: **{_til_active}** maps.")
+        st.caption(f"ℹ Operates on current active maps: **{_til_active}**.")
         sr_seam = st.checkbox(
             "SR seam blend (use if SR was active)",
             value=st.session_state.get("sr_was_used", False),
@@ -712,9 +721,14 @@ else:
                     use_container_width=True,
                 )
             with col_info:
-                w, h = st.session_state["input_image"].size
-                st.caption(f"**Resolution:** {w}×{h} px")
+                _ref = st.session_state.get("original_image") or st.session_state["input_image"]
+                _eff_w = max(256, int(round(_ref.width * st.session_state["zoom"])))
+                _eff_h = max(256, int(round(_ref.height * st.session_state["zoom"])))
+                st.caption(f"**Original:** {_ref.width}×{_ref.height} px")
+                st.caption(f"**Pre-SR input:** {_eff_w}×{_eff_h} px")
                 st.caption(f"**Zoom applied:** {st.session_state['zoom']:.2f}")
+                if st.session_state["sr_was_used"]:
+                    st.caption(f"**SR output:** {_eff_w * 4}×{_eff_h * 4} px (×4)")
                 if st.session_state["group_label"]:
                     st.caption(f"**Material group:** {st.session_state['group_label']}")
                     st.caption(f"**KNN distance:** {st.session_state['knn_distance']:.3f}")
@@ -908,6 +922,7 @@ else:
             "using Reoriented Normal Mapping. Upload the three maps for "
             "material B and set the blend factor."
         )
+        st.caption(f"ℹ Operates on current active maps: **{_til_active}**.")
 
         col_b1, col_b2, col_b3, col_b4 = st.columns(4)
         with col_b1:
@@ -1016,10 +1031,20 @@ else:
             "noise-based techniques (zonal mixing, worn edges, random scaling). "
         )
         st.caption("ℹ Operates on: **Raw** maps.")
+
+        # Technique cycle depends on normal map availability
+        _has_normal = st.session_state.get("maps_raw") is not None and \
+                      st.session_state["maps_raw"].get("normal") is not None
+        _technique_names = (
+            ["Zonal Mix", "Worn Edges", "Scale Shift"]
+            if _has_normal else ["Zonal Mix", "Scale Shift"]
+        )
+        _max_variants = len(_technique_names)
+
         col_v1, col_v2 = st.columns(2)
         with col_v1:
             n_variants = st.slider(
-                "Number of variants", 1, 4, 4, 1,
+                "Number of variants", 1, _max_variants, _max_variants, 1,
                 key="variations_n",
             )
         with col_v2:
@@ -1027,6 +1052,13 @@ else:
                 "Seed", min_value=0, max_value=9999, value=42, step=1,
                 key="variations_seed",
             )
+
+        # Time estimate — empirical: ~25s for 352×352, ~80s for 640×640
+        if st.session_state.get("maps_raw") is not None:
+            _raw_shape = st.session_state["maps_raw"]["roughness"].shape
+            _var_px = _raw_shape[0] * _raw_shape[1]
+            _var_est = max(1, round(_var_px / 3_000 * n_variants / _max_variants))
+            st.caption(f"Estimated time: ~{_var_est} s (CPU-intensive)")
 
         if st.button("Generate Variations", key="btn_generate_variations"):
             _raw = st.session_state["maps_raw"]
@@ -1043,21 +1075,25 @@ else:
             _variants = st.session_state["_variations_list"]
             st.caption(f"{len(_variants)} variant(s) generated. Select one to preview and apply.")
 
-            # Preview grid
+            # Preview grid with technique labels
             _v_cols = st.columns(len(_variants))
             for _i, (_vcol, _v) in enumerate(zip(_v_cols, _variants)):
                 with _vcol:
                     _r_disp = (_v["roughness"].squeeze() * 255).clip(0, 255).astype(np.uint8)
-                    st.image(_r_disp, caption=f"Variant {_i + 1} — R", use_container_width=True)
+                    _tech_label = _technique_names[_i % len(_technique_names)]
+                    st.image(_r_disp, caption=f"Variant {_i + 1} · {_tech_label}", use_container_width=True)
 
             selected_variant = st.selectbox(
                 "Select variant to apply",
-                options=[f"Variant {i + 1}" for i in range(len(_variants))],
+                options=[
+                    f"Variant {i + 1} · {_technique_names[i % len(_technique_names)]}"
+                    for i in range(len(_variants))
+                ],
                 key="variations_selected",
             )
 
             if st.button("Apply Variation", key="btn_apply_variation"):
-                _idx = int(selected_variant.split()[-1]) - 1
+                _idx = int(selected_variant.split()[1]) - 1
                 _v = _variants[_idx]
                 _normal = _v.get("normal", st.session_state["maps_raw"]["normal"])
                 st.session_state["maps_variations"] = {
