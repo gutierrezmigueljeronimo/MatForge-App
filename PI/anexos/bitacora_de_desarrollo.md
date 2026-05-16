@@ -25,7 +25,7 @@
 
 El tiempo disponible es extremadamente limitado, con entrega prevista en menos de tres semanas. Se identifica como crítico que la Fase 0 quede correctamente definida para no perder días en arquitecturas inviables.
 
-![Resumen investigación SOTA](assets/captura01.png)
+![Resumen investigación SOTA](../assets/captura01.png)
 
 *Figura 1. Captura de pantalla de la respuesta con el resumen de la investigación SOTA donde se comparan los planes A, B y C. Se observa el énfasis en modelos jerárquicos y pérdidas físicas.*
 
