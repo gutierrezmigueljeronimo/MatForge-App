@@ -53,7 +53,7 @@ The interface is divided into two areas:
 
 ![Sidebar_1](assets/sidebar_1.png)
 
-![Sidebar_2](docs/assets/sidebar_2.png)
+![Sidebar_2](assets/sidebar_2.png)
 
 ---
 
@@ -81,7 +81,7 @@ Reducing zoom lowers processing time significantly. The sidebar displays the eff
 
 The **Perspective Correction** tool is available as soon as an image is uploaded, before generating maps.
 
-![Perspective Correction](docs/assets/perspective_correction.png)
+![Perspective Correction](assets/perspective_correction.png)
 
 1. Open the **Perspective Correction** expander in the main area.
 2. Drag the four amber handles to the corners of the surface to correct.
@@ -167,7 +167,7 @@ This tool is marked **Beta** — results depend heavily on the input material. V
 
 Blends two PBR material sets using Reoriented Normal Mapping (RNM) for the Normal channel and linear interpolation for Roughness and Metallic.
 
-![Material Blender](docs/assets/material_blender.png)
+![Material Blender](assets/material_blender.png)
 
 1. Upload Normal B, Roughness B, and Metallic B maps using the provided uploaders.
 2. Optionally upload a Color B map for color blending.
@@ -180,7 +180,7 @@ If material B maps have a different resolution than the generated maps, they are
 
 Generates up to three variations of the base material using noise-based techniques. Operates on Raw maps.
 
-![Procedural Variations](docs/assets/procedural_variations.png)
+![Procedural Variations](assets/procedural_variations.png)
 
 - **Zonal Mix** — applies FBM noise to create spatially varying roughness zones.
 - **Worn Edges** — uses normal map gradients to identify edges and applies a wear mask to roughness.
@@ -194,7 +194,7 @@ Adjust **Number of variants** (1–3) and **Seed** before clicking **Generate Va
 
 A real-time Three.js viewer for evaluating the generated material on a 3D surface.
 
-![3D Viewer](docs/assets/viewer_3d.png)
+![3D Viewer](assets/viewer_3d.png)
 
 - **Geometry** — Sphere, Box or Plane.
 - **Preview state** — selects which map state to display (Raw, Adjusted, Calibrated, Blended, Tileable, Variation).
@@ -214,7 +214,7 @@ Use the **Left** and **Right** selectors to choose the states and channels to co
 
 Displays a 2×2 tiled mosaic of the selected map to evaluate seamless repetition.
 
-![Tiling Preview](docs/assets/tiling_preview.png)
+![Tiling Preview](assets/tiling_preview.png)
 
 Select the **State** (Raw, Adjusted, Calibrated, Blended, Tileable, Variation) and **Map** (Normal, Roughness, Metallic, Color) to preview. Use this after applying Make Tileable to verify that seams are not visible at tile boundaries.
 
@@ -222,7 +222,7 @@ Select the **State** (Raw, Adjusted, Calibrated, Blended, Tileable, Variation) a
 
 Processes multiple images in a single run. Upload a ZIP file containing JPG, PNG, or WEBP images.
 
-![Batch ZIP](docs/assets/batch_zip.png)
+![Batch ZIP](assets/batch_zip.png)
 
 **Settings:**
 - **Engine** — export format applied to all images in the batch.
@@ -253,7 +253,7 @@ matforge_batch_{engine}.zip
 
 The **Export** section is located in the main area, below the map tabs.
 
-![Export](docs/assets/export.png)
+![Export](assets/export.png)
 
 1. Enter an **Asset name** (used as the base filename in the exported files).
 2. Select the target **Engine**.
