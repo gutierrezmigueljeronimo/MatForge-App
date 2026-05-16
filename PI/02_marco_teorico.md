@@ -277,7 +277,7 @@ El panel de ajuste físico permite modificar Roughness y Metallic globalmente me
 
 El mezclador de materiales combina dos predicciones MatForge preservando la coherencia física de los vectores normales mediante el método **RNM** (*Reoriented Normal Mapping*) de Barré-Brisebois y Hill [46], publicado en 2012. La interpolación lineal directa sobre normales empacados en [0, 255] produce vectores invalidados; RNM opera sobre vectores desempacados en [−1, 1] y garantiza norma unitaria en el resultado:
 
-$$\text{rnm\_blend}(n_1, n_2): \quad t = n_1 + (0, 0, 1), \quad u = n_2 \cdot (-1, -1, 1), \quad r = \frac{t \cdot (t \cdot u) / t_z - u}{\|t \cdot (t \cdot u) / t_z - u\|}$$
+$$\text{rnm\_blend}(n_1, n_2): \quad t = n_1 + (0,\,0,\,1), \quad u = n_2 \cdot (-1,\,-1,\,1), \quad r = \frac{t \cdot (t \cdot u) / t_z - u}{\|t \cdot (t \cdot u) / t_z - u\|}$$
 
 Para Roughness y Metallic se aplica interpolación lineal ponderada por máscaras procedurales FBM generadas con `opensimplex` o `pyfastnoiselite`.
 
