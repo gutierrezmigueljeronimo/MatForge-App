@@ -339,7 +339,7 @@ Los pesos del sampler reflejan tres criterios: `marble_smooth` y `metal` reciben
 
 Los paneles de visualización UMAP pre- y post-relabeling (Figuras 1 y 2) muestran la separación conseguida en el espacio semántico: el grupo `wood` forma una región compacta y bien delimitada, `metal` aparece como islas dispersas coherentes con su presencia en múltiples categorías originales, y `mixed_ambiguous` se distribuye difusamente, confirmando su naturaleza genuinamente heterogénea.
 
-![Panel UMAP pre-relabeling con categorías originales de MatSynth](assets/panel_B_umap_original_categories.png)
+![Panel UMAP pre-relabeling con categorías originales de MatSynth](assets/panel_B_original_cats.png)
 
 *Figura 1. Proyección UMAP 2D de los embeddings DINOv2-small coloreada por categoría original de MatSynth. La mezcla de categorías en el espacio semántico motiva el relabeling.*
 
