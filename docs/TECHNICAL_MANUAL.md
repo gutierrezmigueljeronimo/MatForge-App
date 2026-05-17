@@ -103,6 +103,7 @@ MatForge_App/
 ├── install.bat
 ├── launch_matforge.bat
 ├── launch_matforge.ps1
+├── PI/
 ├── checkpoints/
 │   ├── matforge/
 │   │   └── best_gan.pt
@@ -134,6 +135,8 @@ MatForge_App/
 └── docs/
     ├── USER_MANUAL.md
     ├── MANUAL_DE_USUARIO.md
+    ├── TECHNICAL_MANUAL.md
+    ├── MANUAL_TECNICO.md
     └── assets/
 ```
 
