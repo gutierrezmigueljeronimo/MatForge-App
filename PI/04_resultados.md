@@ -6,7 +6,9 @@ Para evitar ambigüedades, se distinguen dos niveles de medición. Por un lado, 
 
 ---
 
-## 4.1. Resultados del modelo MatForge (OE1)
+## 4.1. Resultados del modelo MatForge
+
+*Responde a: OE1*
 
 El objetivo OE1 establecía que el modelo final debía predecir mapas PBR con un error angular medio de normales inferior a 11°, un MAE de Roughness inferior a 0,12 y una distancia perceptual LPIPS inferior a 0,10 en el contexto de validación interna del entrenamiento. El checkpoint final adoptado para la aplicación fue `best_gan.pt`.
 
@@ -62,7 +64,9 @@ Estas figuras permiten comprobar que MatForge conserva mejor la estructura local
 
 ---
 
-## 4.2. Resultados del módulo de Super-Resolución (OE2)
+## 4.2. Resultados del módulo de Super-Resolución
+
+*Responde a: OE2*
 
 El objetivo OE2 establecía la incorporación de un módulo de super-resolución ×4 con una mejora mínima del 10% en LPIPS respecto a Real-ESRGAN base. El módulo implementado se basa en RRDBNet y fue fine-tuneado sobre MatSynth. El checkpoint adoptado fue `sr_ft_phase1_best_lpips.pt`, correspondiente a la época 24 del entrenamiento interno.
 
@@ -108,7 +112,9 @@ La evidencia cualitativa confirma que la super-resolución aporta utilidad en en
 
 ---
 
-## 4.3. Resultados del relabeling y del clasificador de materiales (OE3)
+## 4.3. Resultados del relabeling y del clasificador de materiales
+
+*Responde a: OE3*
 
 El objetivo OE3 requería reorganizar el dataset en ocho grupos funcionales, obtener una calidad mínima de agrupamiento DBCV ≥ 0,30 y disponer de un clasificador KNN serializado operativo para la aplicación.
 
@@ -138,13 +144,15 @@ El primer panel muestra la dispersión de las categorías originales, que no sie
 
 ---
 
-## 4.4. Funcionalidades implementadas en MatForge App (OE4, OE5 y OE7)
+## 4.4. Funcionalidades implementadas en MatForge App
+
+*Responde a: OE4, OE5, OE7*
 
 La aplicación final no se limita a ejecutar el modelo MatForge, sino que integra un pipeline local de producción de materiales PBR. Las herramientas se aplican de forma no destructiva mediante estados de mapa acumulativos: `Raw`, `Adjusted`, `Calibrated`, `Blended`, `Tileable` y `Variation`.
 
 ![Vista principal de MatForge App](../docs/assets/hero_shot.png)
 
-### 4.4.1. Herramientas de refinado no destructivo (OE4)
+### 4.4.1. Herramientas de refinado no destructivo
 
 **Corrección de perspectiva.** Permite rectificar fotografías tomadas con ángulo mediante cuatro puntos de control antes de ejecutar la inferencia. Esta funcionalidad reduce distorsiones geométricas que afectarían a la predicción PBR.
 
@@ -176,7 +184,7 @@ La aplicación final no se limita a ejecutar el modelo MatForge, sino que integr
 
 ![Visor 3D integrado](../docs/assets/viewer_3d.png)
 
-### 4.4.2. Exportación multi-motor y metadatos (OE5)
+### 4.4.2. Exportación multi-motor y metadatos
 
 El sistema implementa exportación en ZIP para cinco configuraciones de motor: Blender, Unreal Engine 5, Unity URP, Unity HDRP y Godot 4. Cada motor recibe los mapas con la convención de nombres y empaquetado adecuada. Además, todos los PNG exportados incluyen metadatos XMP embebidos para identificar su procedencia como outputs generados por IA.
 
@@ -194,7 +202,7 @@ También se implementó procesado por lotes mediante ZIP. Esta funcionalidad ana
 
 ![Procesado en lote](../docs/assets/batch_zip.png)
 
-### 4.4.3. Despliegue local y rendimiento (OE7)
+### 4.4.3. Despliegue local y rendimiento
 
 MatForge App funciona localmente, sin dependencia de red durante la inferencia. La aplicación detecta automáticamente si existe GPU CUDA disponible y adapta el tipo de dato a GPU o CPU. La precisión de cómputo se fija en FP32 para todos los modelos, tanto en GPU como en CPU. El uso de FP16 bajo autocast produjo valores NaN en la GTX 1650 Max-Q en ambos modelos durante el desarrollo, y fue descartado experimentalmente.
 
@@ -213,7 +221,9 @@ Estos datos permiten considerar cumplido el criterio de inferencia inferior a 10
 
 ---
 
-## 4.5. Benchmarking comparativo (OE6)
+## 4.5. Benchmarking comparativo
+
+*Responde a: OE6*
 
 ### 4.5.1. Metodología de evaluación
 
