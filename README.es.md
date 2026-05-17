@@ -115,7 +115,7 @@ Sube una imagen RGB mediante el uploader del sidebar. Ajusta el zoom y la Super-
 
 La carpeta `sample_inputs/` incluye imágenes de muestra para pruebas inmediatas. Estas imágenes no se utilizaron durante el entrenamiento de los modelos.
 
-Para instrucciones de uso detalladas, consulta el [Manual de Usuario](docs/MANUAL_DE_USUARIO.md).
+Para instrucciones de uso detalladas, consulta el [Manual de Usuario](docs/MANUAL_DE_USUARIO.md). Y para el entendimiento de la estructura técnica y, los detalles de implementación, consulta el [Manual Técnico](docs/MANUAL_TECNICO.md).
 
 ![Exportación](docs/assets/export.png)
 
@@ -149,6 +149,8 @@ MatForge-App/
 └── docs/
     ├── USER_MANUAL.md
     ├── MANUAL_DE_USUARIO.md
+    ├── TECHNICAL_MANUAL.md
+    ├── MANUAL_TECNICO.md
     └── assets/             # Capturas usadas en la documentación
 ```
 
