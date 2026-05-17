@@ -40,7 +40,7 @@ Desarrollar MatForge App, una herramienta de predicción automática de material
 
 ## 1.5 Objetivos específicos
 
-** *OE1 — Modelo de predicción PBR* **
+**OE1 — Modelo de predicción PBR**
 Desarrollar MatForgeNet, una arquitectura encoder-decoder compuesta por el encoder jerárquico PVT-v2-B1 [3] y un decoder FPN [30] con tres cabezas de refinado independientes, capaz de predecir simultáneamente los mapas Normal, Roughness y Metallic a partir de una única imagen RGB, alcanzando un error angular medio en normales inferior a 11°, un MAE de rugosidad inferior a 0,12 y un LPIPS inferior a 0,10, mediante 90 épocas de entrenamiento supervisado (épocas 0–89) sobre 3.245 texturas curadas de MatSynth [1] seguidas de 20 épocas de ajuste fino adversarial con discriminador PatchGAN multiescala.
 
 **OE2 — Módulo de super-resolución especializado**
