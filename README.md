@@ -115,7 +115,7 @@ Upload an RGB image using the sidebar uploader. Adjust zoom and optional Super-R
 
 Sample input images are provided in `sample_inputs/` for immediate testing. These images were not used during model training.
 
-For detailed usage instructions, see the [User Manual](docs/USER_MANUAL.md).
+For detailed usage instructions, see the [User Manual](docs/USER_MANUAL.md). For information on the technical structure and implementation details, refer to the [Technical Manual](docs/TECHNICAL_MANUAL.md).
 
 ![Export](docs/assets/export.png)
 
@@ -149,6 +149,8 @@ MatForge-App/
 └── docs/
     ├── USER_MANUAL.md
     ├── MANUAL_DE_USUARIO.md
+    ├── TECHNICAL_MANUAL.md
+    ├── MANUAL_TECNICO.md
     └── assets/             # Screenshots used in documentation
 ```
 
