@@ -49,7 +49,7 @@ MatForge es una aplicación Streamlit local que predice mapas de renderizado fí
 ### 1. Clonar el repositorio
 
 ```bash
-git clone https://github.com/migueljeronimogutierrez/MatForge-App.git
+git clone https://github.com/gutierrezmigueljeronimo/MatForge-App.git
 cd MatForge-App
 ```
 
