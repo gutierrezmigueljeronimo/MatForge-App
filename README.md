@@ -49,7 +49,7 @@ MatForge is a local Streamlit application that predicts physically-based renderi
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/migueljeronimogutierrez/MatForge-App.git
+git clone https://github.com/gutierrezmigueljeronimo/MatForge-App.git
 cd MatForge-App
 ```
 
