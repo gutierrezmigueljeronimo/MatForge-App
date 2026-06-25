@@ -25,7 +25,7 @@ No duplica deliberadamente:
 
 - los flujos de uso para usuario final, documentados en `docs/USER_MANUAL.md`;
 - las instrucciones de instalación, documentadas en `README.md`;
-- el contexto investigador y la metodología de entrenamiento, documentados en los archivos académicos bajo `PI/`.
+- el contexto investigador y la metodología de entrenamiento, documentados en los archivos académicos de [MatForge Research](github.com/gutierrezmigueljeronimo/MatForge-Research/tree/main).
 
 Utiliza este manual cuando necesites responder preguntas como:
 
@@ -103,7 +103,6 @@ MatForge_App/
 ├── install.bat
 ├── launch_matforge.bat
 ├── launch_matforge.ps1
-├── PI/
 ├── checkpoints/
 │   ├── matforge/
 │   │   └── best_gan.pt
