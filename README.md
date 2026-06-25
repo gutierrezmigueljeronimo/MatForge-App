@@ -22,9 +22,9 @@ MatForge is a local Streamlit application that predicts physically-based renderi
 - **Multi-engine export** — Blender, Unreal Engine 5, Unity URP, Unity HDRP, and Godot 4, with XMP metadata embedded in every PNG.
 - **Batch ZIP processing** — process an entire ZIP of images through the full pipeline and download a single organized archive.
 
-![3D Viewer](docs/assets/viewer_3d.gif)
-
 ![3D Viewer](docs/assets/viewer_3d.png)
+
+![3D Viewer](docs/assets/viewer_3d.gif)
 
 ---
 
@@ -123,6 +123,21 @@ For detailed usage instructions, see the [User Manual](docs/USER_MANUAL.md). For
 
 ---
 
+## Research Documentation
+
+The complete academic documentation for this project — including the theoretical framework, training methodology, quantitative benchmarking, and conclusions — is available in a dedicated repository:
+
+**[gutierrezmigueljeronimo/MatForge-Research](https://github.com/gutierrezmigueljeronimo/MatForge-Research)**
+
+This includes:
+- Full written documentation (80+ pages, in Spanish)
+- Training and benchmarking notebooks
+- Metrics and results datasets
+- SCRUM backlog and development log
+- Technical research documents on the model, SR module, dataset and GAN discriminator
+
+---
+
 ## Project Structure
 
 ```
@@ -130,7 +145,6 @@ MatForge-App/
 ├── app.py                  # Main Streamlit application
 ├── requirements.txt
 ├── LICENSE
-├── PI/                     # Research documentation (in Spanish)
 ├── install.bat             # One-time environment setup
 ├── launch_matforge.bat     # Application launcher
 ├── launch_matforge.ps1     # PowerShell alternative launcher
@@ -139,6 +153,7 @@ MatForge-App/
 │   └── sr/
 ├── artifacts/              # KNN classifier artifacts
 ├── sample_inputs/          # CC0 sample images for testing
+├── scripts/                # Diagnostic and utility scripts
 ├── src/                    # Source modules
 │   ├── models.py           # MatForgeNet architecture
 │   ├── inference.py        # Tile-and-merge inference pipeline
