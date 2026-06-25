@@ -25,7 +25,7 @@ It deliberately does **not** duplicate:
 
 - end-user workflows, which are documented in `docs/USER_MANUAL.md`;
 - installation instructions, which are documented in `README.md`;
-- research background and training methodology, which are documented in the academic project files under `PI/`.
+- research background and training methodology, which are documented in the academic project files under [MatForge Research](https://https://github.com/gutierrezmigueljeronimo/MatForge-Research/tree/main).
 
 Use this manual when you need to answer questions such as:
 
@@ -103,7 +103,6 @@ MatForge_App/
 ├── install.bat
 ├── launch_matforge.bat
 ├── launch_matforge.ps1
-├── PI/
 ├── checkpoints/
 │   ├── matforge/
 │   │   └── best_gan.pt
