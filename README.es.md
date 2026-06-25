@@ -24,6 +24,8 @@ MatForge es una aplicación Streamlit local que predice mapas de renderizado fí
 
 ![Visor 3D](docs/assets/viewer_3d.png)
 
+![Visor 3D](docs/assets/viewer_3d.gif)
+
 ---
 
 ## Requisitos del sistema
@@ -121,6 +123,21 @@ Para instrucciones de uso detalladas, consulta el [Manual de Usuario](docs/MANUA
 
 ---
 
+## Documentación de investigación
+
+La documentación académica completa del proyecto —marco teórico, metodología de entrenamiento, benchmarking cuantitativo y conclusiones— está disponible en un repositorio dedicado:
+
+**[gutierrezmigueljeronimo/MatForge-Research](https://github.com/gutierrezmigueljeronimo/MatForge-Research)**
+
+Incluye:
+- Documentación escrita completa (+80 páginas, en español)
+- Notebooks de entrenamiento y benchmarking
+- Datasets de métricas y resultados
+- Backlog SCRUM y bitácora de desarrollo
+- Documentos técnicos de investigación sobre el modelo, el módulo SR, el dataset y el discriminador GAN
+
+---
+
 ## Estructura del proyecto
 
 ```
@@ -128,7 +145,6 @@ MatForge-App/
 ├── app.py                  # Aplicación Streamlit principal
 ├── requirements.txt
 ├── LICENSE
-├── PI/                     # Documentación de la investigación (en Español)
 ├── install.bat             # Instalación del entorno (una sola vez)
 ├── launch_matforge.bat     # Lanzador de la aplicación
 ├── launch_matforge.ps1     # Lanzador alternativo en PowerShell
@@ -137,6 +153,7 @@ MatForge-App/
 │   └── sr/
 ├── artifacts/              # Artefactos del clasificador KNN
 ├── sample_inputs/          # Imágenes de muestra CC0 para pruebas
+├── scripts/                # Scripts de diagnóstico y utilidades
 ├── src/                    # Módulos de código fuente
 │   ├── models.py           # Arquitectura MatForgeNet
 │   ├── inference.py        # Pipeline de inferencia tile-and-merge
