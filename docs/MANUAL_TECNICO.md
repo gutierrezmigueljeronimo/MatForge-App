@@ -25,7 +25,7 @@ No duplica deliberadamente:
 
 - los flujos de uso para usuario final, documentados en `docs/USER_MANUAL.md`;
 - las instrucciones de instalación, documentadas en `README.md`;
-- el contexto investigador y la metodología de entrenamiento, documentados en los archivos académicos de [MatForge Research](github.com/gutierrezmigueljeronimo/MatForge-Research/tree/main).
+- el contexto investigador y la metodología de entrenamiento, documentados en los archivos académicos de [MatForge Research](https://github.com/gutierrezmigueljeronimo/MatForge-Research/tree/main).
 
 Utiliza este manual cuando necesites responder preguntas como:
 
