@@ -22,6 +22,8 @@ MatForge is a local Streamlit application that predicts physically-based renderi
 - **Multi-engine export** — Blender, Unreal Engine 5, Unity URP, Unity HDRP, and Godot 4, with XMP metadata embedded in every PNG.
 - **Batch ZIP processing** — process an entire ZIP of images through the full pipeline and download a single organized archive.
 
+![3D Viewer](docs/assets/viewer_3d.gif)
+
 ![3D Viewer](docs/assets/viewer_3d.png)
 
 ---
