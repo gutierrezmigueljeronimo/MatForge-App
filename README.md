@@ -57,7 +57,7 @@ cd MatForge-App
 
 ### 2. Download model weights
 
-Model weights are distributed as release assets due to their size (tracked via Git LFS). Download them from the [latest release](https://github.com/migueljeronimogutierrez/MatForge-App/releases/latest) and place them in the following locations:
+Model weights are distributed as release assets due to their size (tracked via Git LFS). Download them from the [latest release](https://github.com/gutierrezmigueljeronimo/MatForge-App/releases/tag/v1.0) and place them in the following locations:
 
 ```
 checkpoints/
