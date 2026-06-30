@@ -36,8 +36,6 @@ CLAUDE.md
 # Diagnostic outputs
 scripts/__pycache__/
 
-# scikit-learn version lock is now 1.8.0 — no additional ignores needed
-
 # Large model files tracked via Git LFS (declared in .gitattributes)
 # These are NOT ignored — LFS handles them
 # Listed here only as documentation
