@@ -57,7 +57,7 @@ cd MatForge-App
 
 ### 2. Descargar los pesos de los modelos
 
-Los pesos se distribuyen como assets del release debido a su tamaño (gestionados con Git LFS). Descárgalos desde el [último release](https://github.com/migueljeronimogutierrez/MatForge-App/releases/latest) y colócalos en las siguientes rutas:
+Los pesos se distribuyen como assets del release debido a su tamaño (gestionados con Git LFS). Descárgalos desde el [último release](https://github.com/gutierrezmigueljeronimo/MatForge-App/releases/tag/v1.0) y colócalos en las siguientes rutas:
 
 ```
 checkpoints/
