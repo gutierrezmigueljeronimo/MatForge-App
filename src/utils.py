@@ -262,7 +262,7 @@ def estimate_processing_time(
     """Estimate tile count and total processing time in seconds.
 
     Based on benchmarked throughput on GTX 1650 Max-Q with float32.
-    Constants are provisional until measured on real hardware.
+    Constants measured on real hardware.
 
     Args:
         image:  Input PIL image before zoom is applied.
