@@ -95,7 +95,7 @@ def classify_material(image: Image.Image) -> tuple[str, float]:
 
     # ---- 1. Preprocess input -------------------------------------------------
     img_resized = image.resize((IMG_SIZE, IMG_SIZE), Image.LANCZOS)
-    arr = pil_to_numpy(img_resized)                         # (224,224,3) float32 [0,1]
+    arr = pil_to_numpy(img_resized)                         # (518,518,3) float32 [0,1]
 
     # ImageNet normalisation (same as used during relabeling training)
     mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
